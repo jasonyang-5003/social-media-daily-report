@@ -1,0 +1,9 @@
+# Secrets
+google-service-account.json
+**/.env
+
+# Local data and Python cache
+*.db
+**/__pycache__/
+*.pyc
+
