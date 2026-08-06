@@ -7,3 +7,5 @@ google-service-account.json
 **/__pycache__/
 *.pyc
 
+# Local Metricool browser session (contains login cookies)
+**/.metricool-browser-profile/
