@@ -6,6 +6,7 @@ from pathlib import Path
 
 import gspread
 import requests
+from gspread.exceptions import WorksheetNotFound
 
 from discord_test import load_env
 
@@ -14,6 +15,7 @@ PLATFORM = "X"
 REGION = "North America"
 ACTOR_ID = "kaitoeasyapi~twitter-x-data-tweet-scraper-pay-per-result-cheapest"
 ACTOR_BUILD = "latest0225"
+MONTH_QUERY_SAFETY_LIMIT = 1000
 DAILY_HEADERS = [
     "date",
     "platform",
@@ -28,6 +30,8 @@ DAILY_HEADERS = [
     "active_rate",
     "interactions",
     "status",
+    "month_views",
+    "month_interactions",
 ]
 
 
@@ -62,6 +66,52 @@ def previous_follower_count(values: list[list[str]], report_date: str) -> int | 
     return max(candidates, key=lambda item: item[0])[1]
 
 
+def upsert_post_snapshots(sheet, items: list[dict]) -> None:
+    headers = ["post_id", "created_at", "views", "interactions", "last_seen_at"]
+    values = sheet.get_all_values()
+    if not values:
+        sheet.append_row(headers, value_input_option="RAW")
+        values = [headers]
+    elif values[0] != headers:
+        sheet.update(values=[headers], range_name="A1:E1", value_input_option="RAW")
+
+    existing_rows = {
+        row[0]: row_number
+        for row_number, row in enumerate(values[1:], start=2)
+        if row
+    }
+    seen_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    updates = []
+    new_rows = []
+    for item in items:
+        post_id = str(item.get("id") or "")
+        if not post_id:
+            continue
+        interactions = sum(
+            int(item.get(field) or 0)
+            for field in ("likeCount", "replyCount", "retweetCount", "quoteCount")
+        )
+        snapshot = [
+            post_id,
+            parse_created_at(str(item.get("createdAt", ""))).isoformat(),
+            int(item.get("viewCount") or 0),
+            interactions,
+            seen_at,
+        ]
+        if post_id in existing_rows:
+            row_number = existing_rows[post_id]
+            updates.append(
+                {"range": f"A{row_number}:E{row_number}", "values": [snapshot]}
+            )
+        else:
+            new_rows.append(snapshot)
+
+    if updates:
+        sheet.batch_update(updates, value_input_option="USER_ENTERED")
+    if new_rows:
+        sheet.append_rows(new_rows, value_input_option="USER_ENTERED")
+
+
 def upsert_snapshot(sheet, report_date: str, followers: int) -> None:
     values = sheet.get_all_values()
     for row_number, row in enumerate(values[1:], start=2):
@@ -75,15 +125,15 @@ def upsert_snapshot(sheet, report_date: str, followers: int) -> None:
     sheet.append_row([report_date, followers], value_input_option="USER_ENTERED")
 
 
-def run_actor(token: str, username: str, max_items: int, max_charge: float):
+def run_actor(token: str, query: str, max_charge: float):
     headers = {
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json",
     }
     payload = {
-        "twitterContent": f"from:{username}",
+        "twitterContent": query,
         "queryType": "Latest",
-        "maxItems": max_items,
+        "maxItems": MONTH_QUERY_SAFETY_LIMIT,
     }
     url = (
         f"https://api.apify.com/v2/acts/{ACTOR_ID}/runs"
@@ -99,6 +149,12 @@ def run_actor(token: str, username: str, max_items: int, max_charge: float):
             f"usage={run.get('usageTotalUsd', '')}"
         )
 
+    usage_usd = float(run.get("usageTotalUsd") or 0)
+    if usage_usd >= max_charge * 0.98:
+        raise RuntimeError(
+            "Apify reached the configured charge cap; monthly X data may be incomplete"
+        )
+
     dataset_response = requests.get(
         f"https://api.apify.com/v2/datasets/{run['defaultDatasetId']}/items",
         headers={"Authorization": f"Bearer {token}"},
@@ -111,7 +167,9 @@ def run_actor(token: str, username: str, max_items: int, max_charge: float):
         for item in dataset_response.json()
         if item.get("id") and not item.get("noResults")
     ]
-    return items, float(run.get("usageTotalUsd") or 0)
+    if len(items) >= MONTH_QUERY_SAFETY_LIMIT:
+        raise RuntimeError("X monthly query reached the 1000-post safety boundary")
+    return items, usage_usd
 
 
 def main() -> None:
@@ -120,7 +178,6 @@ def main() -> None:
     token = env.get("APIFY_API_TOKEN", "")
     username = env.get("X_USERNAME", "").lstrip("@")
     sheet_id = env.get("GOOGLE_SHEET_ID", "")
-    max_posts = min(max(int(env.get("X_MAX_POSTS", "10")), 1), 10)
     max_charge = min(float(env.get("APIFY_MAX_CHARGE_USD", "0.005")), 0.005)
     credentials_path = (base_dir / env.get("GOOGLE_CREDENTIALS_FILE", "")).resolve()
 
@@ -133,20 +190,31 @@ def main() -> None:
     start = today_utc - timedelta(days=1)
     end = today_utc
     report_date = start.date().isoformat()
+    month_start = start.replace(day=1)
+    query = (
+        f"from:{username} since:{month_start.date().isoformat()} "
+        f"until:{end.date().isoformat()}"
+    )
 
-    items, usage_usd = run_actor(token, username, max_posts, max_charge)
+    items, usage_usd = run_actor(token, query, max_charge)
+    items = list({str(item["id"]): item for item in items}.values())
     items = sorted(items, key=lambda item: int(item["id"]), reverse=True)
-    latest_items = items[:max_posts]
-    if not latest_items:
-        raise RuntimeError("The X collector returned no usable posts or profile data")
+    month_items = [
+        item
+        for item in items
+        if item.get("createdAt")
+        and month_start <= parse_created_at(str(item["createdAt"])) < end
+    ]
+    if not month_items:
+        raise RuntimeError("The X collector returned no posts for the current month")
 
-    author = latest_items[0].get("author") or {}
+    author = month_items[0].get("author") or {}
     followers = int(author.get("followers") or 0)
     if followers <= 0:
         raise RuntimeError("The X collector did not return a valid follower count")
 
     report_posts = []
-    for item in latest_items:
+    for item in month_items:
         created_at = parse_created_at(str(item.get("createdAt", "")))
         if start <= created_at < end:
             report_posts.append(item)
@@ -162,15 +230,34 @@ def main() -> None:
     workbook = sheets.open_by_key(sheet_id)
     daily_sheet = workbook.worksheet("daily_metrics")
     snapshot_sheet = workbook.worksheet("x_follower_snapshots")
+    try:
+        post_snapshot_sheet = workbook.worksheet("x_post_snapshots")
+    except WorksheetNotFound:
+        post_snapshot_sheet = workbook.add_worksheet(
+            title="x_post_snapshots", rows=1000, cols=5
+        )
     log_sheet = workbook.worksheet("run_logs")
     values = daily_sheet.get_all_values()
 
     if not values:
         daily_sheet.append_row(DAILY_HEADERS, value_input_option="RAW")
         values = [DAILY_HEADERS]
+    elif values[0] != DAILY_HEADERS:
+        daily_sheet.update(
+            values=[DAILY_HEADERS],
+            range_name="A1:O1",
+            value_input_option="RAW",
+        )
 
     previous_count = previous_follower_count(values, report_date)
     net_growth = followers - previous_count if previous_count is not None else ""
+    upsert_post_snapshots(post_snapshot_sheet, month_items)
+    month_views = sum(int(item.get("viewCount") or 0) for item in month_items)
+    month_interactions = sum(
+        int(item.get(field) or 0)
+        for item in month_items
+        for field in ("likeCount", "replyCount", "retweetCount", "quoteCount")
+    )
     row = [
         report_date,
         PLATFORM,
@@ -185,13 +272,15 @@ def main() -> None:
         "",
         interactions,
         "success",
+        month_views,
+        month_interactions,
     ]
 
     existing_row = find_existing_row(values, report_date)
     if existing_row:
         daily_sheet.update(
             values=[row],
-            range_name=f"A{existing_row}:M{existing_row}",
+            range_name=f"A{existing_row}:O{existing_row}",
             value_input_option="USER_ENTERED",
         )
         action = "updated"
@@ -206,7 +295,7 @@ def main() -> None:
             PLATFORM,
             "success",
             (
-                f"{action}; returned={len(items)}; processed={len(latest_items)}; "
+                f"{action}; returned={len(items)}; processed={len(month_items)}; "
                 f"report_posts={len(report_posts)}; usage_usd={usage_usd:.6f}"
             ),
         ],
@@ -219,8 +308,12 @@ def main() -> None:
     print(f"REPORT_POSTS={len(report_posts)}")
     print(f"IMPRESSIONS={impressions}")
     print(f"INTERACTIONS={interactions}")
+    print(f"MONTH_VIEWS={month_views}")
+    print(f"MONTH_INTERACTIONS={month_interactions}")
     print(f"RETURNED_ITEMS={len(items)}")
-    print(f"PROCESSED_ITEMS={len(latest_items)}")
+    print(f"PROCESSED_ITEMS={len(month_items)}")
+    print(f"QUERY_SINCE={month_start.date().isoformat()}")
+    print(f"QUERY_UNTIL={end.date().isoformat()}")
     print(f"USAGE_USD={usage_usd:.6f}")
     print(f"SHEET_ACTION={action}")
 

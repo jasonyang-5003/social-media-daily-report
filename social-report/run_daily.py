@@ -51,6 +51,7 @@ def main() -> int:
         platform: run_collector(base_dir, platform, script_name)
         for platform, script_name in COLLECTORS
     }
+    results["PDF"] = run_collector(base_dir, "PDF", "generate_pdf.py")
 
     succeeded = [platform for platform, ok in results.items() if ok]
     failed = [platform for platform, ok in results.items() if not ok]

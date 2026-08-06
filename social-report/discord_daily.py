@@ -24,6 +24,8 @@ DAILY_HEADERS = [
     "active_rate",
     "interactions",
     "status",
+    "month_views",
+    "month_interactions",
 ]
 
 
@@ -92,6 +94,12 @@ def main() -> None:
     if not values:
         daily_sheet.append_row(DAILY_HEADERS, value_input_option="RAW")
         values = [DAILY_HEADERS]
+    elif values[0] != DAILY_HEADERS:
+        daily_sheet.update(
+            values=[DAILY_HEADERS],
+            range_name="A1:O1",
+            value_input_option="RAW",
+        )
 
     previous_count = previous_member_count(values, report_date)
     net_growth = member_count - previous_count if previous_count is not None else ""
@@ -109,13 +117,15 @@ def main() -> None:
         active_rate,
         "",
         "success",
+        "",
+        "",
     ]
 
     existing_row = find_existing_row(values, report_date)
     if existing_row:
         daily_sheet.update(
             values=[row],
-            range_name=f"A{existing_row}:M{existing_row}",
+            range_name=f"A{existing_row}:O{existing_row}",
             value_input_option="USER_ENTERED",
         )
         action = "updated"

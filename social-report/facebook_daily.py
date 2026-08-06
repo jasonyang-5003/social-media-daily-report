@@ -30,6 +30,8 @@ DAILY_HEADERS = [
     "active_rate",
     "interactions",
     "status",
+    "month_views",
+    "month_interactions",
 ]
 
 
@@ -88,7 +90,26 @@ def choose_yesterday(page: Page) -> None:
     page.wait_for_timeout(2_500)
 
 
-def collect_metricool(profile_dir: Path) -> tuple[int, int, int, int]:
+def choose_current_month(page: Page) -> None:
+    picker = page.locator('[aria-label="Evolution date range picker"]')
+    picker.locator("button").first.click()
+    page.get_by_role("button", name="Current month", exact=True).click()
+    page.wait_for_timeout(2_500)
+
+
+def read_metric_boxes(page: Page) -> list[tuple[str, str]]:
+    page.locator('[aria-label="Analysis Metric Box"]').first.wait_for(
+        state="visible", timeout=30_000
+    )
+    return [
+        split_metric_box(text)
+        for text in page.locator(
+            '[aria-label="Analysis Metric Box"]'
+        ).all_text_contents()
+    ]
+
+
+def collect_metricool(profile_dir: Path) -> tuple[int, int, int, int, int, int]:
     with sync_playwright() as playwright:
         context = playwright.chromium.launch_persistent_context(
             user_data_dir=str(profile_dir),
@@ -106,13 +127,7 @@ def collect_metricool(profile_dir: Path) -> tuple[int, int, int, int]:
                 )
 
             choose_yesterday(page)
-            page.locator('[aria-label="Analysis Metric Box"]').first.wait_for(
-                state="visible", timeout=30_000
-            )
-            box_texts = page.locator(
-                '[aria-label="Analysis Metric Box"]'
-            ).all_text_contents()
-            metrics = [split_metric_box(text) for text in box_texts]
+            metrics = read_metric_boxes(page)
 
             followers = parse_number(first_metric(metrics, "Followers"))
             views = parse_number(first_metric(metrics, "Views"))
@@ -130,7 +145,30 @@ def collect_metricool(profile_dir: Path) -> tuple[int, int, int, int]:
             if interactions is None:
                 raise RuntimeError("Metricool returned an unavailable interaction metric")
 
-            return followers, acquired - lost, views, interactions
+            choose_current_month(page)
+            month_metrics = read_metric_boxes(page)
+            month_views = parse_number(first_metric(month_metrics, "Views"))
+            month_interactions = parse_number(
+                first_metric(month_metrics, "Interactions")
+            )
+            if month_views is None:
+                raise RuntimeError("Metricool returned a blank monthly view metric")
+            if month_interactions is None:
+                month_total_content = parse_number(
+                    first_metric(month_metrics, "Total content")
+                )
+                month_interactions = 0 if month_total_content is None else None
+            if month_interactions is None:
+                raise RuntimeError("Metricool returned a blank monthly interaction metric")
+
+            return (
+                followers,
+                acquired - lost,
+                views,
+                interactions,
+                month_views,
+                month_interactions,
+            )
         finally:
             context.close()
 
@@ -156,7 +194,14 @@ def main() -> None:
         hour=0, minute=0, second=0, microsecond=0
     )
     report_date = (today_utc - timedelta(days=1)).date().isoformat()
-    followers, net_growth, views, interactions = collect_metricool(profile_dir)
+    (
+        followers,
+        net_growth,
+        views,
+        interactions,
+        month_views,
+        month_interactions,
+    ) = collect_metricool(profile_dir)
 
     sheets = gspread.service_account(filename=str(credentials_path))
     workbook = sheets.open_by_key(sheet_id)
@@ -167,6 +212,12 @@ def main() -> None:
     if not values:
         daily_sheet.append_row(DAILY_HEADERS, value_input_option="RAW")
         values = [DAILY_HEADERS]
+    elif values[0] != DAILY_HEADERS:
+        daily_sheet.update(
+            values=[DAILY_HEADERS],
+            range_name="A1:O1",
+            value_input_option="RAW",
+        )
 
     row = [
         report_date,
@@ -182,13 +233,15 @@ def main() -> None:
         "",
         interactions,
         "success",
+        month_views,
+        month_interactions,
     ]
 
     existing_row = find_existing_row(values, report_date)
     if existing_row:
         daily_sheet.update(
             values=[row],
-            range_name=f"A{existing_row}:M{existing_row}",
+            range_name=f"A{existing_row}:O{existing_row}",
             value_input_option="USER_ENTERED",
         )
         action = "updated"
@@ -211,6 +264,8 @@ def main() -> None:
     print(f"NET_GROWTH={net_growth}")
     print(f"VIEWS={views}")
     print(f"INTERACTIONS={interactions}")
+    print(f"MONTH_VIEWS={month_views}")
+    print(f"MONTH_INTERACTIONS={month_interactions}")
     print(f"SHEET_ACTION={action}")
 
 

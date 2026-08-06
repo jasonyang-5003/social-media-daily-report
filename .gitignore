@@ -10,3 +10,5 @@ google-service-account.json
 # Local Metricool browser session (contains login cookies)
 **/.metricool-browser-profile/
 **/logs/
+**/output/pdf/*.pdf
+**/tmp/pdfs/
