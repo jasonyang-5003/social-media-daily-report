@@ -11,4 +11,5 @@ google-service-account.json
 **/.metricool-browser-profile/
 **/logs/
 **/output/pdf/*.pdf
+**/output/png/*.png
 **/tmp/pdfs/

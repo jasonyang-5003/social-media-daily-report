@@ -12,6 +12,7 @@ from discord_test import load_env
 
 PLATFORM = "Facebook"
 REGION = "LATAM"
+POST_VIEW_SCOPE_START = "2026-08-06"
 METRICOOL_URL = (
     "https://app.metricool.com/evolution/facebookPage"
     "?blogId=6680040&userId=5139837"
@@ -83,6 +84,17 @@ def first_metric(metrics: list[tuple[str, str]], label: str) -> str:
     raise RuntimeError(f"Metricool did not return the {label} metric")
 
 
+def metric_occurrence(
+    metrics: list[tuple[str, str]], label: str, occurrence: int
+) -> str:
+    values = [value for metric_label, value in metrics if metric_label == label]
+    if len(values) <= occurrence:
+        raise RuntimeError(
+            f"Metricool did not return occurrence {occurrence + 1} of {label}"
+        )
+    return values[occurrence]
+
+
 def choose_yesterday(page: Page) -> None:
     picker = page.locator('[aria-label="Evolution date range picker"]')
     picker.locator("button").first.click()
@@ -101,12 +113,15 @@ def read_metric_boxes(page: Page) -> list[tuple[str, str]]:
     page.locator('[aria-label="Analysis Metric Box"]').first.wait_for(
         state="visible", timeout=30_000
     )
-    return [
-        split_metric_box(text)
-        for text in page.locator(
-            '[aria-label="Analysis Metric Box"]'
-        ).all_text_contents()
-    ]
+    metrics = []
+    for text in page.locator(
+        '[aria-label="Analysis Metric Box"]'
+    ).all_text_contents():
+        try:
+            metrics.append(split_metric_box(text))
+        except ValueError:
+            continue
+    return metrics
 
 
 def collect_metricool(profile_dir: Path) -> tuple[int, int, int, int, int, int]:
@@ -147,7 +162,9 @@ def collect_metricool(profile_dir: Path) -> tuple[int, int, int, int, int, int]:
 
             choose_current_month(page)
             month_metrics = read_metric_boxes(page)
-            month_views = parse_number(first_metric(month_metrics, "Views"))
+            month_views = parse_number(
+                metric_occurrence(month_metrics, "Views", occurrence=1)
+            )
             month_interactions = parse_number(
                 first_metric(month_metrics, "Interactions")
             )
@@ -180,6 +197,37 @@ def find_existing_row(values: list[list[str]], report_date: str) -> int | None:
     return None
 
 
+def previous_month_totals(
+    values: list[list[str]], report_date: str
+) -> tuple[str, int, int] | None:
+    candidates: list[tuple[str, int, int]] = []
+    month_prefix = report_date[:7]
+    for row in values[1:]:
+        if (
+            len(row) < 15
+            or row[1] != PLATFORM
+            or row[2] != REGION
+            or row[0] >= report_date
+            or not row[0].startswith(month_prefix)
+            or row[13] == ""
+            or row[14] == ""
+        ):
+            continue
+        try:
+            candidates.append(
+                (
+                    row[0],
+                    int(float(str(row[13]).replace(",", ""))),
+                    int(float(str(row[14]).replace(",", ""))),
+                )
+            )
+        except (TypeError, ValueError):
+            continue
+    if not candidates:
+        return None
+    return max(candidates, key=lambda item: item[0])
+
+
 def main() -> None:
     base_dir = Path(__file__).resolve().parent
     env = load_env(base_dir / ".env")
@@ -197,8 +245,8 @@ def main() -> None:
     (
         followers,
         net_growth,
-        views,
-        interactions,
+        _period_views,
+        _period_interactions,
         month_views,
         month_interactions,
     ) = collect_metricool(profile_dir)
@@ -218,6 +266,19 @@ def main() -> None:
             range_name="A1:O1",
             value_input_option="RAW",
         )
+
+    previous_totals = previous_month_totals(values, report_date)
+    if previous_totals is None:
+        views = ""
+        interactions = ""
+    else:
+        previous_date, previous_views, previous_interactions = previous_totals
+        views = (
+            month_views - previous_views
+            if previous_date >= POST_VIEW_SCOPE_START
+            else ""
+        )
+        interactions = month_interactions - previous_interactions
 
     row = [
         report_date,
@@ -254,7 +315,11 @@ def main() -> None:
             datetime.now(timezone.utc).isoformat(timespec="seconds"),
             PLATFORM,
             "success",
-            f"{action}; source=Metricool; range=yesterday",
+            (
+                f"{action}; source=Metricool; "
+                f"month_views_scope=posts_published_in_month; "
+                f"daily_metrics=month_snapshot_delta"
+            ),
         ],
         value_input_option="RAW",
     )

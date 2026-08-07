@@ -66,6 +66,38 @@ def previous_follower_count(values: list[list[str]], report_date: str) -> int | 
     return max(candidates, key=lambda item: item[0])[1]
 
 
+def previous_month_totals(
+    values: list[list[str]], report_date: str
+) -> tuple[int, int] | None:
+    candidates: list[tuple[str, int, int]] = []
+    month_prefix = report_date[:7]
+    for row in values[1:]:
+        if (
+            len(row) < 15
+            or row[1] != PLATFORM
+            or row[2] != REGION
+            or row[0] >= report_date
+            or not row[0].startswith(month_prefix)
+            or row[13] == ""
+            or row[14] == ""
+        ):
+            continue
+        try:
+            candidates.append(
+                (
+                    row[0],
+                    int(float(str(row[13]).replace(",", ""))),
+                    int(float(str(row[14]).replace(",", ""))),
+                )
+            )
+        except (TypeError, ValueError):
+            continue
+    if not candidates:
+        return None
+    _, views, interactions = max(candidates, key=lambda item: item[0])
+    return views, interactions
+
+
 def upsert_post_snapshots(sheet, items: list[dict]) -> None:
     headers = ["post_id", "created_at", "views", "interactions", "last_seen_at"]
     values = sheet.get_all_values()
@@ -213,19 +245,6 @@ def main() -> None:
     if followers <= 0:
         raise RuntimeError("The X collector did not return a valid follower count")
 
-    report_posts = []
-    for item in month_items:
-        created_at = parse_created_at(str(item.get("createdAt", "")))
-        if start <= created_at < end:
-            report_posts.append(item)
-
-    impressions = sum(int(item.get("viewCount") or 0) for item in report_posts)
-    interactions = sum(
-        int(item.get(field) or 0)
-        for item in report_posts
-        for field in ("likeCount", "replyCount", "retweetCount", "quoteCount")
-    )
-
     sheets = gspread.service_account(filename=str(credentials_path))
     workbook = sheets.open_by_key(sheet_id)
     daily_sheet = workbook.worksheet("daily_metrics")
@@ -258,6 +277,13 @@ def main() -> None:
         for item in month_items
         for field in ("likeCount", "replyCount", "retweetCount", "quoteCount")
     )
+    previous_totals = previous_month_totals(values, report_date)
+    if previous_totals is None:
+        impressions = ""
+        interactions = ""
+    else:
+        impressions = month_views - previous_totals[0]
+        interactions = month_interactions - previous_totals[1]
     row = [
         report_date,
         PLATFORM,
@@ -296,7 +322,7 @@ def main() -> None:
             "success",
             (
                 f"{action}; returned={len(items)}; processed={len(month_items)}; "
-                f"report_posts={len(report_posts)}; usage_usd={usage_usd:.6f}"
+                f"daily_metrics=month_snapshot_delta; usage_usd={usage_usd:.6f}"
             ),
         ],
         value_input_option="RAW",
@@ -305,7 +331,6 @@ def main() -> None:
     print(f"REPORT_DATE={report_date}")
     print(f"FOLLOWERS={followers}")
     print(f"NET_GROWTH={net_growth}")
-    print(f"REPORT_POSTS={len(report_posts)}")
     print(f"IMPRESSIONS={impressions}")
     print(f"INTERACTIONS={interactions}")
     print(f"MONTH_VIEWS={month_views}")

@@ -4,6 +4,7 @@ from datetime import datetime
 from pathlib import Path
 
 import gspread
+import pypdfium2 as pdfium
 from reportlab.lib.colors import HexColor
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.pdfbase import pdfmetrics
@@ -15,10 +16,17 @@ from discord_test import load_env
 
 FONT_REGULAR = "MicrosoftYaHei"
 FONT_BOLD = "MicrosoftYaHeiBold"
-PLATFORMS = ("Facebook", "Discord", "X")
-PLATFORM_COLORS = {
+ENTITY_KEYS = ("Facebook", "Discord:LATAM", "Discord:Global", "X")
+ENTITY_LABELS = {
+    "Facebook": "Facebook",
+    "Discord:LATAM": "Discord LATAM",
+    "Discord:Global": "Discord Global",
+    "X": "X",
+}
+ENTITY_COLORS = {
     "Facebook": HexColor("#1877F2"),
-    "Discord": HexColor("#5865F2"),
+    "Discord:LATAM": HexColor("#5865F2"),
+    "Discord:Global": HexColor("#7C3AED"),
     "X": HexColor("#111827"),
 }
 
@@ -73,11 +81,14 @@ def latest_metrics(base_dir: Path) -> tuple[str, dict[str, dict]]:
         raise RuntimeError("daily_metrics does not contain report data")
 
     report_date = max(str(row.get("date", "")) for row in records)
-    rows = {
-        str(row.get("platform")): row
-        for row in records
-        if str(row.get("date", "")) == report_date
-    }
+    rows = {}
+    for row in records:
+        if str(row.get("date", "")) != report_date:
+            continue
+        platform = str(row.get("platform"))
+        region = str(row.get("region"))
+        key = f"Discord:{region}" if platform == "Discord" else platform
+        rows[key] = row
     return report_date, rows
 
 
@@ -99,14 +110,15 @@ def draw_metric(
 
 def draw_platform_card(
     pdf: canvas.Canvas,
-    platform: str,
+    entity_key: str,
     row: dict,
     x: float,
     y: float,
     width: float,
     height: float,
 ) -> None:
-    color = PLATFORM_COLORS[platform]
+    platform = entity_key.split(":", 1)[0]
+    color = ENTITY_COLORS[entity_key]
     pdf.setFillColor(HexColor("#FFFFFF"))
     pdf.roundRect(x, y, width, height, 12, fill=1, stroke=0)
     pdf.setFillColor(color)
@@ -114,9 +126,9 @@ def draw_platform_card(
     pdf.rect(x, y + height - 42, width, 12, fill=1, stroke=0)
 
     pdf.setFillColor(HexColor("#FFFFFF"))
-    pdf.setFont(FONT_BOLD, 15)
+    pdf.setFont(FONT_BOLD, 14)
     pdf.drawString(x + 16, y + height - 27, platform)
-    pdf.setFont(FONT_REGULAR, 9)
+    pdf.setFont(FONT_REGULAR, 7)
     region = str(row.get("region") or "-")
     pdf.drawRightString(x + width - 16, y + height - 26, region)
 
@@ -131,8 +143,8 @@ def draw_platform_card(
         metrics = [
             ("关注者总数", format_integer(row.get("followers_total"))),
             ("净增长", format_growth(row.get("net_growth"))),
-            ("浏览量", format_integer(row.get("impressions"))),
-            ("互动量", format_integer(row.get("interactions"))),
+            ("新增浏览量", format_integer(row.get("impressions"))),
+            ("新增互动量", format_integer(row.get("interactions"))),
             ("本月总浏览量", format_integer(row.get("month_views"))),
             ("本月互动量", format_integer(row.get("month_interactions"))),
         ]
@@ -168,21 +180,24 @@ def draw_audience_chart(
     pdf.setFont(FONT_REGULAR, 8)
     pdf.drawRightString(x + width - 18, y + height - 27, "关注者 / 成员")
 
-    values = {platform: as_int(rows.get(platform, {}).get("followers_total")) or 0 for platform in PLATFORMS}
+    values = {
+        key: as_int(rows.get(key, {}).get("followers_total")) or 0
+        for key in ENTITY_KEYS
+    }
     max_value = max(values.values()) or 1
-    chart_x = x + 90
-    chart_width = width - 180
-    first_y = y + height - 68
+    chart_x = x + 108
+    chart_width = width - 198
+    first_y = y + height - 61
 
-    for index, platform in enumerate(PLATFORMS):
-        bar_y = first_y - index * 42
-        value = values[platform]
+    for index, entity_key in enumerate(ENTITY_KEYS):
+        bar_y = first_y - index * 34
+        value = values[entity_key]
         pdf.setFillColor(HexColor("#344054"))
         pdf.setFont(FONT_REGULAR, 10)
-        pdf.drawString(x + 18, bar_y + 4, platform)
+        pdf.drawString(x + 18, bar_y + 4, ENTITY_LABELS[entity_key])
         pdf.setFillColor(HexColor("#E7ECF3"))
         pdf.roundRect(chart_x, bar_y, chart_width, 13, 6, fill=1, stroke=0)
-        pdf.setFillColor(PLATFORM_COLORS[platform])
+        pdf.setFillColor(ENTITY_COLORS[entity_key])
         pdf.roundRect(chart_x, bar_y, chart_width * value / max_value, 13, 6, fill=1, stroke=0)
         pdf.setFillColor(HexColor("#16233A"))
         pdf.setFont(FONT_BOLD, 9)
@@ -201,13 +216,13 @@ def draw_performance_table(
     pdf.roundRect(x, y, width, height, 12, fill=1, stroke=0)
     pdf.setFillColor(HexColor("#16233A"))
     pdf.setFont(FONT_BOLD, 13)
-    pdf.drawString(x + 18, y + height - 28, "当日与本月表现")
+    pdf.drawString(x + 18, y + height - 28, "每日新增与本月累计")
 
-    columns = [x + 18, x + 92, x + 198]
+    columns = [x + 18, x + width * 0.34, x + width * 0.67]
     header_y = y + height - 57
     pdf.setFillColor(HexColor("#667085"))
     pdf.setFont(FONT_REGULAR, 9)
-    for column_x, label in zip(columns, ("平台", "当日", "本月累计")):
+    for column_x, label in zip(columns, ("平台", "当日新增", "本月累计")):
         pdf.drawString(column_x, header_y, label)
 
     table_rows = [
@@ -222,18 +237,24 @@ def draw_performance_table(
             (f"浏览 {format_integer(rows.get('X', {}).get('month_views'))}", f"互动 {format_integer(rows.get('X', {}).get('month_interactions'))}"),
         ),
         (
-            "Discord",
-            (f"活跃 {format_integer(rows.get('Discord', {}).get('active_members'))}", f"活跃率 {format_rate(rows.get('Discord', {}).get('active_rate'))}"),
+            "Discord:LATAM",
+            (f"活跃 {format_integer(rows.get('Discord:LATAM', {}).get('active_members'))}", f"活跃率 {format_rate(rows.get('Discord:LATAM', {}).get('active_rate'))}"),
+            ("不适用", ""),
+        ),
+        (
+            "Discord:Global",
+            (f"活跃 {format_integer(rows.get('Discord:Global', {}).get('active_members'))}", f"活跃率 {format_rate(rows.get('Discord:Global', {}).get('active_rate'))}"),
             ("不适用", ""),
         ),
     ]
     for index, values in enumerate(table_rows):
-        row_y = header_y - 35 - index * 46
+        row_y = header_y - 31 - index * 38
         pdf.setStrokeColor(HexColor("#E7ECF3"))
         pdf.line(x + 18, row_y + 24, x + width - 18, row_y + 24)
         pdf.setFont(FONT_BOLD, 9)
-        pdf.setFillColor(PLATFORM_COLORS[values[0]])
-        pdf.drawString(columns[0], row_y + 2, values[0])
+        pdf.setFillColor(ENTITY_COLORS[values[0]])
+        table_label = ENTITY_LABELS[values[0]].replace("Discord ", "DC ")
+        pdf.drawString(columns[0], row_y + 2, table_label)
         pdf.setFont(FONT_REGULAR, 9)
         pdf.setFillColor(HexColor("#344054"))
         pdf.drawString(columns[1], row_y + 8, values[1][0])
@@ -246,17 +267,9 @@ def draw_performance_table(
 def generate_pdf(base_dir: Path) -> Path:
     register_fonts()
     report_date, rows = latest_metrics(base_dir)
-    output_dir = base_dir / "output" / "pdf"
+    output_dir = base_dir / "tmp" / "pdfs"
     output_dir.mkdir(parents=True, exist_ok=True)
-    output_path = output_dir / f"social-media-daily-report-{report_date}.pdf"
-    try:
-        with output_path.open("ab"):
-            pass
-    except PermissionError:
-        output_path = output_dir / (
-            f"social-media-daily-report-{report_date}-updated-"
-            f"{datetime.now().strftime('%H%M%S')}.pdf"
-        )
+    output_path = output_dir / f"social-media-daily-report-{report_date}-render.pdf"
 
     page_width, page_height = landscape(A4)
     pdf = canvas.Canvas(str(output_path), pagesize=(page_width, page_height))
@@ -278,15 +291,15 @@ def generate_pdf(base_dir: Path) -> Path:
         f"生成时间：{datetime.now().astimezone().strftime('%Y-%m-%d %H:%M')}",
     )
 
-    gap = 14
-    card_width = (page_width - margin * 2 - gap * 2) / 3
+    gap = 10
+    card_width = (page_width - margin * 2 - gap * 3) / 4
     card_y = 318
     card_height = 190
-    for index, platform in enumerate(PLATFORMS):
+    for index, entity_key in enumerate(ENTITY_KEYS):
         draw_platform_card(
             pdf,
-            platform,
-            rows.get(platform, {}),
+            entity_key,
+            rows.get(entity_key, {}),
             margin + index * (card_width + gap),
             card_y,
             card_width,
@@ -295,22 +308,23 @@ def generate_pdf(base_dir: Path) -> Path:
 
     lower_y = 76
     lower_height = 220
-    left_width = 450
-    draw_audience_chart(pdf, rows, margin, lower_y, left_width, lower_height)
     draw_performance_table(
         pdf,
         rows,
-        margin + left_width + gap,
+        margin,
         lower_y,
-        page_width - margin * 2 - left_width - gap,
+        page_width - margin * 2,
         lower_height,
     )
 
-    statuses = [str(rows.get(platform, {}).get("status") or "missing") for platform in PLATFORMS]
+    statuses = [
+        str(rows.get(entity_key, {}).get("status") or "missing")
+        for entity_key in ENTITY_KEYS
+    ]
     overall_status = "数据完整" if all(status == "success" for status in statuses) else "存在缺失数据"
     pdf.setFillColor(HexColor("#667085"))
     pdf.setFont(FONT_REGULAR, 8)
-    pdf.drawString(margin, 45, "说明：暂无基准表示尚未有前一日快照；0 表示已确认当日为零。数据来源：Google Sheets。")
+    pdf.drawString(margin, 45, "说明：日增量 = 当日本月累计快照 - 前一日快照；暂无基准表示无可用前日快照。")
     pdf.drawRightString(page_width - margin, 45, f"状态：{overall_status}")
     pdf.setStrokeColor(HexColor("#D7DEE8"))
     pdf.line(margin, 61, page_width - margin, 61)
@@ -320,9 +334,37 @@ def generate_pdf(base_dir: Path) -> Path:
     return output_path
 
 
+def generate_png(pdf_path: Path, base_dir: Path) -> Path:
+    report_date = pdf_path.name.split("social-media-daily-report-", 1)[1][:10]
+    output_dir = base_dir / "output" / "png"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    output_path = output_dir / f"social-media-daily-report-{report_date}.png"
+    try:
+        with output_path.open("ab"):
+            pass
+    except PermissionError:
+        output_path = output_dir / (
+            f"social-media-daily-report-{report_date}-updated-"
+            f"{datetime.now().strftime('%H%M%S')}.png"
+        )
+
+    document = pdfium.PdfDocument(str(pdf_path))
+    try:
+        image = document[0].render(scale=2.2).to_pil()
+        image.save(output_path, format="PNG", optimize=True)
+    finally:
+        document.close()
+    return output_path
+
+
 def main() -> None:
-    output_path = generate_pdf(Path(__file__).resolve().parent)
-    print(f"PDF_PATH={output_path}")
+    base_dir = Path(__file__).resolve().parent
+    pdf_path = generate_pdf(base_dir)
+    try:
+        png_path = generate_png(pdf_path, base_dir)
+    finally:
+        pdf_path.unlink(missing_ok=True)
+    print(f"PNG_PATH={png_path}")
 
 
 if __name__ == "__main__":
