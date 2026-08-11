@@ -10,6 +10,7 @@ COLLECTORS = [
     ("Discord", "discord_daily.py"),
     ("X", "x_daily.py"),
     ("Facebook", "facebook_daily.py"),
+    ("YouTube", "youtube_daily.py"),
 ]
 
 

@@ -6,7 +6,7 @@ from pathlib import Path
 import gspread
 import pypdfium2 as pdfium
 from reportlab.lib.colors import HexColor
-from reportlab.lib.pagesizes import A4, landscape
+from reportlab.lib.pagesizes import A3, landscape
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas
@@ -16,18 +16,42 @@ from discord_test import load_env
 
 FONT_REGULAR = "MicrosoftYaHei"
 FONT_BOLD = "MicrosoftYaHeiBold"
-ENTITY_KEYS = ("Facebook", "Discord:LATAM", "Discord:Global", "X")
+ENTITY_KEYS = (
+    "Facebook",
+    "X",
+    "YouTube:Mary",
+    "YouTube:UgScript",
+    "Discord:LATAM",
+    "Discord:Global",
+)
+ENTITY_GROUPS = (
+    ("社媒主页", ("Facebook", "X"), HexColor("#344054")),
+    (
+        "Discord 社区",
+        ("Discord:LATAM", "Discord:Global"),
+        HexColor("#5865F2"),
+    ),
+    (
+        "YouTube 频道",
+        ("YouTube:Mary", "YouTube:UgScript"),
+        HexColor("#FF0033"),
+    ),
+)
 ENTITY_LABELS = {
     "Facebook": "Facebook",
+    "X": "X",
+    "YouTube:Mary": "YouTube Mary",
+    "YouTube:UgScript": "YouTube UgScript",
     "Discord:LATAM": "Discord LATAM",
     "Discord:Global": "Discord Global",
-    "X": "X",
 }
 ENTITY_COLORS = {
     "Facebook": HexColor("#1877F2"),
+    "X": HexColor("#111827"),
+    "YouTube:Mary": HexColor("#FF0033"),
+    "YouTube:UgScript": HexColor("#F97316"),
     "Discord:LATAM": HexColor("#5865F2"),
     "Discord:Global": HexColor("#7C3AED"),
-    "X": HexColor("#111827"),
 }
 
 
@@ -87,7 +111,11 @@ def latest_metrics(base_dir: Path) -> tuple[str, dict[str, dict]]:
             continue
         platform = str(row.get("platform"))
         region = str(row.get("region"))
-        key = f"Discord:{region}" if platform == "Discord" else platform
+        key = (
+            f"{platform}:{region}"
+            if platform in {"Discord", "YouTube"}
+            else platform
+        )
         rows[key] = row
     return report_date, rows
 
@@ -140,8 +168,9 @@ def draw_platform_card(
             ("活跃率", format_rate(row.get("active_rate"))),
         ]
     else:
+        audience_label = "订阅者总数" if platform == "YouTube" else "关注者总数"
         metrics = [
-            ("关注者总数", format_integer(row.get("followers_total"))),
+            (audience_label, format_integer(row.get("followers_total"))),
             ("净增长", format_growth(row.get("net_growth"))),
             ("新增浏览量", format_integer(row.get("impressions"))),
             ("新增互动量", format_integer(row.get("interactions"))),
@@ -155,11 +184,16 @@ def draw_platform_card(
         (x + 16 + col_width, y + height - 68),
         (x + 16, y + height - 116),
         (x + 16 + col_width, y + height - 116),
-        (x + 16, y + height - 164),
-        (x + 16 + col_width, y + height - 164),
+        (x + 16, y + height - 154),
+        (x + 16 + col_width, y + height - 154),
     ]
     for (label, value), (metric_x, metric_y) in zip(metrics, positions):
-        value_color = HexColor("#16A34A") if label == "净增长" and value.startswith("+") else HexColor("#16233A")
+        value_color = HexColor("#16233A")
+        if label == "净增长":
+            if value.startswith("+"):
+                value_color = HexColor("#16A34A")
+            elif value.startswith("-"):
+                value_color = HexColor("#DC2626")
         draw_metric(pdf, metric_x, metric_y, label, value, value_color)
 
 
@@ -237,6 +271,16 @@ def draw_performance_table(
             (f"浏览 {format_integer(rows.get('X', {}).get('month_views'))}", f"互动 {format_integer(rows.get('X', {}).get('month_interactions'))}"),
         ),
         (
+            "YouTube:Mary",
+            (f"浏览 {format_integer(rows.get('YouTube:Mary', {}).get('impressions'))}", f"互动 {format_integer(rows.get('YouTube:Mary', {}).get('interactions'))}"),
+            (f"浏览 {format_integer(rows.get('YouTube:Mary', {}).get('month_views'))}", f"互动 {format_integer(rows.get('YouTube:Mary', {}).get('month_interactions'))}"),
+        ),
+        (
+            "YouTube:UgScript",
+            (f"浏览 {format_integer(rows.get('YouTube:UgScript', {}).get('impressions'))}", f"互动 {format_integer(rows.get('YouTube:UgScript', {}).get('interactions'))}"),
+            (f"浏览 {format_integer(rows.get('YouTube:UgScript', {}).get('month_views'))}", f"互动 {format_integer(rows.get('YouTube:UgScript', {}).get('month_interactions'))}"),
+        ),
+        (
             "Discord:LATAM",
             (f"活跃 {format_integer(rows.get('Discord:LATAM', {}).get('active_members'))}", f"活跃率 {format_rate(rows.get('Discord:LATAM', {}).get('active_rate'))}"),
             ("不适用", ""),
@@ -248,7 +292,7 @@ def draw_performance_table(
         ),
     ]
     for index, values in enumerate(table_rows):
-        row_y = header_y - 31 - index * 38
+        row_y = header_y - 31 - index * 34
         pdf.setStrokeColor(HexColor("#E7ECF3"))
         pdf.line(x + 18, row_y + 24, x + width - 18, row_y + 24)
         pdf.setFont(FONT_BOLD, 9)
@@ -271,7 +315,7 @@ def generate_pdf(base_dir: Path) -> Path:
     output_dir.mkdir(parents=True, exist_ok=True)
     output_path = output_dir / f"social-media-daily-report-{report_date}-render.pdf"
 
-    page_width, page_height = landscape(A4)
+    page_width, page_height = landscape(A3)
     pdf = canvas.Canvas(str(output_path), pagesize=(page_width, page_height))
     pdf.setTitle(f"Social Media Daily Report {report_date}")
 
@@ -291,31 +335,34 @@ def generate_pdf(base_dir: Path) -> Path:
         f"生成时间：{datetime.now().astimezone().strftime('%Y-%m-%d %H:%M')}",
     )
 
-    gap = 10
-    card_width = (page_width - margin * 2 - gap * 3) / 4
-    card_y = 318
-    card_height = 190
-    for index, entity_key in enumerate(ENTITY_KEYS):
-        draw_platform_card(
-            pdf,
-            entity_key,
-            rows.get(entity_key, {}),
-            margin + index * (card_width + gap),
-            card_y,
-            card_width,
-            card_height,
-        )
+    card_gap = 12
+    card_width = (page_width - margin * 2 - card_gap) / 2
+    card_height = 180
+    first_card_y = page_height - 310
+    group_step = 224
+    for group_index, (group_label, entity_keys, group_color) in enumerate(
+        ENTITY_GROUPS
+    ):
+        card_y = first_card_y - group_index * group_step
+        label_y = card_y + card_height + 17
+        pdf.setFillColor(group_color)
+        pdf.roundRect(margin, label_y - 3, 5, 17, 2, fill=1, stroke=0)
+        pdf.setFillColor(HexColor("#344054"))
+        pdf.setFont(FONT_BOLD, 12)
+        pdf.drawString(margin + 13, label_y, group_label)
+        pdf.setStrokeColor(HexColor("#D7DEE8"))
+        pdf.line(margin + 120, label_y + 5, page_width - margin, label_y + 5)
 
-    lower_y = 76
-    lower_height = 220
-    draw_performance_table(
-        pdf,
-        rows,
-        margin,
-        lower_y,
-        page_width - margin * 2,
-        lower_height,
-    )
+        for card_index, entity_key in enumerate(entity_keys):
+            draw_platform_card(
+                pdf,
+                entity_key,
+                rows.get(entity_key, {}),
+                margin + card_index * (card_width + card_gap),
+                card_y,
+                card_width,
+                card_height,
+            )
 
     statuses = [
         str(rows.get(entity_key, {}).get("status") or "missing")
@@ -324,10 +371,10 @@ def generate_pdf(base_dir: Path) -> Path:
     overall_status = "数据完整" if all(status == "success" for status in statuses) else "存在缺失数据"
     pdf.setFillColor(HexColor("#667085"))
     pdf.setFont(FONT_REGULAR, 8)
-    pdf.drawString(margin, 45, "说明：日增量 = 当日本月累计快照 - 前一日快照；暂无基准表示无可用前日快照。")
-    pdf.drawRightString(page_width - margin, 45, f"状态：{overall_status}")
+    pdf.drawString(margin, 35, "说明：YouTube 本月累计仅统计本月发布视频；日增量为该批视频累计值的日差；互动量 = 点赞 + 评论。")
+    pdf.drawRightString(page_width - margin, 35, f"状态：{overall_status}")
     pdf.setStrokeColor(HexColor("#D7DEE8"))
-    pdf.line(margin, 61, page_width - margin, 61)
+    pdf.line(margin, 50, page_width - margin, 50)
 
     pdf.showPage()
     pdf.save()
