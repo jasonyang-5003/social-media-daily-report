@@ -3,34 +3,47 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#101828" />
-    <title>社媒数据仪表盘</title>
+    <meta name="theme-color" content="#0b1220" />
+    <meta name="description" content="UgPhone 社交媒体运营数据仪表盘" />
+    <title>社媒数据仪表盘 · UgPhone</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
+    <a class="skip-link" href="#dashboard">跳到数据内容</a>
     <main class="shell">
       <header class="topbar">
-        <div>
-          <p class="eyebrow">UGPHONE · SOCIAL ANALYTICS</p>
-          <h1>社媒数据仪表盘</h1>
-          <p id="updated-at" class="subtitle">正在加载每日采集数据…</p>
+        <div class="brand-block">
+          <div class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></div>
+          <div>
+            <p class="eyebrow">UGPHONE · SOCIAL ANALYTICS</p>
+            <h1>社媒数据仪表盘</h1>
+            <p id="updated-at" class="subtitle">正在加载每日采集数据…</p>
+          </div>
         </div>
-        <div class="range-tabs" role="tablist" aria-label="数据时间范围">
-          <button class="range-tab active" data-range="today" role="tab">今日</button>
-          <button class="range-tab" data-range="7d" role="tab">近 7 天</button>
-          <button class="range-tab" data-range="month" role="tab">本月</button>
+        <div class="toolbar">
+          <div class="status-pill"><span class="status-dot"></span><span>每日 09:40 更新</span></div>
+          <div class="range-tabs" role="tablist" aria-label="数据时间范围">
+            <button class="range-tab active" data-range="today" role="tab" aria-selected="true">今日</button>
+            <button class="range-tab" data-range="7d" role="tab" aria-selected="false">近 7 天</button>
+            <button class="range-tab" data-range="month" role="tab" aria-selected="false">本月</button>
+          </div>
         </div>
       </header>
 
+      <section id="overview" class="overview" aria-label="数据概览"></section>
       <section id="dashboard" aria-live="polite"></section>
+      <footer class="footer-note">数据来自各平台公开接口与授权运营数据 · 北京时间</footer>
     </main>
+
     <template id="entity-template">
       <article class="entity-card">
         <div class="entity-header">
-          <span class="entity-dot"></span>
-          <div>
-            <p class="entity-type"></p>
-            <h2 class="entity-name"></h2>
+          <div class="entity-identity">
+            <span class="entity-dot" aria-hidden="true"></span>
+            <div>
+              <p class="entity-type"></p>
+              <h3 class="entity-name"></h3>
+            </div>
           </div>
           <p class="latest-date"></p>
         </div>
@@ -40,7 +53,7 @@
             <span class="chart-title">趋势</span>
             <span class="chart-note"></span>
           </div>
-          <svg class="trend-chart" viewBox="0 0 640 184" role="img"></svg>
+          <svg class="trend-chart" viewBox="0 0 640 184" role="img" aria-label="数据趋势图"></svg>
         </div>
       </article>
     </template>
