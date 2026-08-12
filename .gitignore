@@ -13,3 +13,7 @@ google-service-account.json
 **/output/pdf/*.pdf
 **/output/png/*.png
 **/tmp/pdfs/
+
+# Local dashboard preview logs
+dashboard-preview.out.log
+dashboard-preview.err.log

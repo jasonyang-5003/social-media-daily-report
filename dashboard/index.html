@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#101828" />
+    <title>社媒数据仪表盘</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">UGPHONE · SOCIAL ANALYTICS</p>
+          <h1>社媒数据仪表盘</h1>
+          <p id="updated-at" class="subtitle">正在加载每日采集数据…</p>
+        </div>
+        <div class="range-tabs" role="tablist" aria-label="数据时间范围">
+          <button class="range-tab active" data-range="today" role="tab">今日</button>
+          <button class="range-tab" data-range="7d" role="tab">近 7 天</button>
+          <button class="range-tab" data-range="month" role="tab">本月</button>
+        </div>
+      </header>
+
+      <section id="dashboard" aria-live="polite"></section>
+    </main>
+    <template id="entity-template">
+      <article class="entity-card">
+        <div class="entity-header">
+          <span class="entity-dot"></span>
+          <div>
+            <p class="entity-type"></p>
+            <h2 class="entity-name"></h2>
+          </div>
+          <p class="latest-date"></p>
+        </div>
+        <div class="metric-grid"></div>
+        <div class="chart-wrap">
+          <div class="chart-title-row">
+            <span class="chart-title">趋势</span>
+            <span class="chart-note"></span>
+          </div>
+          <svg class="trend-chart" viewBox="0 0 640 184" role="img"></svg>
+        </div>
+      </article>
+    </template>
+    <script src="app.js"></script>
+  </body>
+</html>

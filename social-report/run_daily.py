@@ -11,6 +11,7 @@ COLLECTORS = [
     ("X", "x_daily.py"),
     ("Facebook", "facebook_daily.py"),
     ("YouTube", "youtube_daily.py"),
+    ("Dashboard data", "export_dashboard_data.py"),
 ]
 
 
@@ -52,8 +53,6 @@ def main() -> int:
         platform: run_collector(base_dir, platform, script_name)
         for platform, script_name in COLLECTORS
     }
-    results["PNG"] = run_collector(base_dir, "PNG", "generate_pdf.py")
-
     succeeded = [platform for platform, ok in results.items() if ok]
     failed = [platform for platform, ok in results.items() if not ok]
     finished_at = datetime.now().astimezone()
