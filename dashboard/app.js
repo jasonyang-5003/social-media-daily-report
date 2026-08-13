@@ -86,7 +86,10 @@ function drawDualChart(wrapper, points, config) {
   }
   const leftScale = axisScale(leftValues.length ? leftValues : [0]);
   const rightScale = axisScale(rightValues.length ? rightValues : [0], config.right.kind === "bar");
-  const x = (index) => left + (points.length === 1 ? plotWidth / 2 : index * plotWidth / (points.length - 1));
+  const xInset = Math.min(28, plotWidth / Math.max(points.length + 1, 2));
+  const x = (index) => points.length === 1
+    ? left + plotWidth / 2
+    : left + xInset + index * (plotWidth - xInset * 2) / (points.length - 1);
   const y = (value, scale) => top + (scale.max - value) * plotHeight / (scale.max - scale.min || 1);
   const series = [config.left, config.right].map((seriesConfig, seriesIndex) => ({ ...seriesConfig, scale: seriesIndex ? rightScale : leftScale }));
   const horizontalGrid = [0, .25, .5, .75, 1].map((ratio) => {
