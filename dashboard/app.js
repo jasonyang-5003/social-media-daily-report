@@ -9,9 +9,13 @@ const escapeHtml = (text) => String(text).replace(/[&<>"]/g, (char) => ({ "&": "
 function pickPoints(points, range) {
   if (!points.length) return [];
   if (range === "today") return points.slice(-1);
-  if (range === "7d") return points.slice(-7);
-  const month = points.at(-1).date.slice(0, 7);
-  return points.filter((point) => point.date.startsWith(month));
+  const latest = new Date(`${points.at(-1).date}T00:00:00`);
+  if (range === "7d") {
+    const start = new Date(latest); start.setDate(start.getDate() - 6);
+    return points.filter((point) => new Date(`${point.date}T00:00:00`) >= start);
+  }
+  const monthStart = new Date(latest.getFullYear(), latest.getMonth(), 1);
+  return points.filter((point) => new Date(`${point.date}T00:00:00`) >= monthStart);
 }
 
 function chartPoints(entity, points) {
@@ -43,26 +47,22 @@ function entityMetrics(entity, points) {
 function chartConfigs(entity) {
   if (entity.group === "Discord 社区") {
     return [
-      { title: "成员规模与净增长", left: { key: "audience", label: "成员总数", color: entity.color }, right: { key: "netGrowth", label: "净增长", color: "#F79009" } },
-      { title: "社区活跃趋势", left: { key: "activeMembers", label: "活跃成员", color: entity.color }, right: { key: "activeRate", label: "活跃率", color: "#7C3AED", format: formatRate } },
+      { title: "成员规模与净增长", left: { key: "audience", label: "成员总数", color: entity.color, kind: "line" }, right: { key: "netGrowth", label: "净增长", color: "#F79009", kind: "bar" } },
+      { title: "社区活跃趋势", left: { key: "activeMembers", label: "活跃成员", color: entity.color, kind: "line" }, right: { key: "activeRate", label: "活跃率", color: "#7C3AED", format: formatRate, kind: "bar" } },
     ];
   }
   return [
-    { title: "浏览量趋势", left: { key: "monthViews", label: "本月浏览量", color: entity.color }, right: { key: "views", label: "当日新增浏览", color: "#F79009" } },
-    { title: "粉丝规模与净增长", left: { key: "audience", label: entity.audience_label, color: entity.color }, right: { key: "netGrowth", label: "净增长粉丝", color: "#7C3AED" } },
+    { title: "浏览量趋势", left: { key: "monthViews", label: "本月浏览量", color: entity.color, kind: "line" }, right: { key: "views", label: "当日新增浏览", color: "#F79009", kind: "bar" } },
+    { title: "粉丝规模与净增长", left: { key: "audience", label: entity.audience_label, color: entity.color, kind: "line" }, right: { key: "netGrowth", label: "净增长粉丝", color: "#7C3AED", kind: "bar" } },
   ];
 }
 
-function axisScale(values) {
-  const low = Math.min(...values, 0);
-  const high = Math.max(...values, 0);
-  const pad = (high - low || Math.max(Math.abs(high), 1)) * 0.12;
-  return { min: Math.min(0, low - pad), max: high + pad };
-}
-
-function interpolate(points, key, index) {
-  for (let i = index; i >= 0; i -= 1) if (points[i][key] != null) return points[i][key];
-  return null;
+function axisScale(values, includeZero = false) {
+  let low = Math.min(...values), high = Math.max(...values);
+  if (includeZero) { low = Math.min(0, low); high = Math.max(0, high); }
+  const span = high - low || Math.max(Math.abs(high), 1);
+  const pad = span * 0.12;
+  return { min: includeZero ? Math.min(0, low - pad) : low - pad, max: high + pad };
 }
 
 function drawDualChart(wrapper, points, config) {
@@ -85,7 +85,7 @@ function drawDualChart(wrapper, points, config) {
     return;
   }
   const leftScale = axisScale(leftValues.length ? leftValues : [0]);
-  const rightScale = axisScale(rightValues.length ? rightValues : [0]);
+  const rightScale = axisScale(rightValues.length ? rightValues : [0], config.right.kind === "bar");
   const x = (index) => left + (points.length === 1 ? plotWidth / 2 : index * plotWidth / (points.length - 1));
   const y = (value, scale) => top + (scale.max - value) * plotHeight / (scale.max - scale.min || 1);
   const series = [config.left, config.right].map((seriesConfig, seriesIndex) => ({ ...seriesConfig, scale: seriesIndex ? rightScale : leftScale }));
@@ -97,20 +97,26 @@ function drawDualChart(wrapper, points, config) {
   }).join("");
   const xAxis = `<line class="axis-line" x1="${left}" y1="${top+plotHeight}" x2="${width-right}" y2="${top+plotHeight}"/><line class="axis-line" x1="${left}" y1="${top}" x2="${left}" y2="${top+plotHeight}"/><line class="axis-line" x1="${width-right}" y1="${top}" x2="${width-right}" y2="${top+plotHeight}"/>`;
   const dateLabels = points.map((point, index) => `<g transform="translate(${x(index)},${top+plotHeight+15}) rotate(-42)"><text class="axis-label axis-date" text-anchor="end">${point.date}</text></g>`).join("");
-  const lines = series.map((seriesConfig) => {
+  const lines = series.filter((seriesConfig) => seriesConfig.kind !== "bar").map((seriesConfig) => {
     const coords = points.map((point, index) => point[seriesConfig.key] == null ? null : { x: x(index), y: y(point[seriesConfig.key], seriesConfig.scale) });
     const segments = []; let path = "";
     coords.forEach((coord) => { if (!coord) { if (path) segments.push(path); path = ""; } else path += `${path ? " L" : "M"}${coord.x.toFixed(1)},${coord.y.toFixed(1)}`; }); if (path) segments.push(path);
     return segments.map((segment) => `<path class="line" d="${segment}" stroke="${seriesConfig.color}"/>`).join("");
   }).join("");
-  const dots = points.flatMap((point, index) => series.filter((seriesConfig) => point[seriesConfig.key] != null).map((seriesConfig) => {
+  const bars = points.map((point, index) => {
+    if (point[config.right.key] == null) return "";
+    const valueY = y(point[config.right.key], rightScale); const zeroY = y(0, rightScale); const barWidth = Math.min(32, plotWidth / Math.max(points.length * 1.8, 2));
+    const tooltipText = `${point.date}\n${config.left.label}  ${config.left.format ? config.left.format(point[config.left.key]) : formatNumber(point[config.left.key])}\n${config.right.label}  ${config.right.format ? config.right.format(point[config.right.key]) : formatNumber(point[config.right.key])}`;
+    return `<rect class="bar interactive-bar" data-chart="${chartId}" data-tip="${escapeHtml(tooltipText)}" tabindex="0" role="img" aria-label="${point.date}，${config.left.label} ${formatNumber(point[config.left.key])}，${config.right.label} ${formatNumber(point[config.right.key])}" x="${x(index)-barWidth/2}" y="${Math.min(valueY, zeroY)}" width="${barWidth}" height="${Math.max(1, Math.abs(zeroY-valueY))}" fill="${config.right.color}"/>`;
+  }).join("");
+  const dots = points.flatMap((point, index) => series.filter((seriesConfig) => seriesConfig.kind !== "bar" && point[seriesConfig.key] != null).map((seriesConfig) => {
     const leftText = config.left.format ? config.left.format(point[config.left.key]) : formatNumber(point[config.left.key]);
     const rightText = config.right.format ? config.right.format(point[config.right.key]) : formatNumber(point[config.right.key]);
     const text = `${point.date}\n${config.left.label}  ${leftText}\n${config.right.label}  ${rightText}`;
     return `<circle class="dot interactive-dot" data-chart="${chartId}" data-tip="${escapeHtml(text)}" tabindex="0" role="img" aria-label="${point.date}，${config.left.label} ${leftText}，${config.right.label} ${rightText}" cx="${x(index)}" cy="${y(point[seriesConfig.key], seriesConfig.scale)}" r="4.5" stroke="${seriesConfig.color}"/>`;
   })).join("");
-  svg.innerHTML = `${horizontalGrid}${xAxis}${lines}${dots}${dateLabels}<text class="axis-title" x="${left}" y="14" fill="${config.left.color}">${config.left.label}</text><text class="axis-title" x="${width-right}" y="14" text-anchor="end" fill="${config.right.color}">${config.right.label}</text>`;
-  chart.querySelectorAll(`.interactive-dot[data-chart="${chartId}"]`).forEach((dot) => {
+  svg.innerHTML = `${horizontalGrid}${xAxis}${bars}${lines}${dots}${dateLabels}<text class="axis-title" x="${left}" y="14" fill="${config.left.color}">${config.left.label}</text><text class="axis-title" x="${width-right}" y="14" text-anchor="end" fill="${config.right.color}">${config.right.label}</text>`;
+  chart.querySelectorAll(`[data-chart="${chartId}"]`).forEach((dot) => {
     const showTip = (event) => { tooltip.textContent = dot.dataset.tip; tooltip.hidden = false; const bounds = chart.querySelector(".chart-canvas").getBoundingClientRect(); const pointerX = event?.clientX || bounds.left + bounds.width / 2; tooltip.style.left = `${Math.max(8, Math.min(bounds.width - 156, pointerX - bounds.left + 10))}px`; tooltip.style.top = "18px"; };
     dot.addEventListener("mouseenter", showTip); dot.addEventListener("focus", showTip);
     dot.addEventListener("mouseleave", () => { tooltip.hidden = true; }); dot.addEventListener("blur", () => { tooltip.hidden = true; });
