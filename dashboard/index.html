@@ -38,17 +38,19 @@
 
     <template id="entity-template">
       <article class="entity-card">
-        <div class="entity-header">
-          <div class="entity-identity">
-            <span class="entity-dot" aria-hidden="true"></span>
-            <div>
-              <p class="entity-type"></p>
-              <h3 class="entity-name"></h3>
+        <div class="entity-summary">
+          <div class="entity-header">
+            <div class="entity-identity">
+              <span class="entity-dot" aria-hidden="true"></span>
+              <div>
+                <p class="entity-type"></p>
+                <h3 class="entity-name"></h3>
+              </div>
             </div>
+            <p class="latest-date"></p>
           </div>
-          <p class="latest-date"></p>
+          <div class="metric-grid"></div>
         </div>
-        <div class="metric-grid"></div>
         <div class="chart-list"></div>
       </article>
     </template>

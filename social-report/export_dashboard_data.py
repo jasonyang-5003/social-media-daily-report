@@ -12,14 +12,14 @@ from discord_test import load_env
 ENTITY_CONFIG = {
     ("Facebook", "LATAM"): {
         "id": "facebook",
-        "label": "Facebook",
+        "label": "Facebook LATAM",
         "group": "社媒主页",
         "color": "#1877F2",
         "audience_label": "关注者",
     },
     ("X", "North America"): {
         "id": "x",
-        "label": "X",
+        "label": "X US",
         "group": "社媒主页",
         "color": "#111827",
         "audience_label": "关注者",

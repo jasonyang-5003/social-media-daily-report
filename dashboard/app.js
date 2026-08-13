@@ -135,7 +135,14 @@ function renderOverview() {
 }
 
 function renderNavigation() {
-  document.querySelector("#section-nav").innerHTML = `<span class="nav-label">快速定位</span>${state.data.entities.map((entity) => `<a href="#${entity.id}" style="--nav-color:${entity.color}"><span></span>${entity.label}</a>`).join("")}`;
+  const groups = [...new Set(state.data.entities.map((entity) => entity.group))];
+  document.querySelector("#section-nav").innerHTML = `<span class="nav-label">快速定位</span>${groups.map((group) => {
+    const links = state.data.entities
+      .filter((entity) => entity.group === group)
+      .map((entity) => `<a href="#${entity.id}" style="--nav-color:${entity.color}"><span></span>${entity.label}</a>`)
+      .join("");
+    return `<div class="nav-group"><span class="nav-group-label">${group}</span><div class="nav-links">${links}</div></div>`;
+  }).join("")}`;
 }
 
 function render() {
