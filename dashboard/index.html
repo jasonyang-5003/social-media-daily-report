@@ -31,6 +31,7 @@
       </header>
 
       <section id="overview" class="overview" aria-label="数据概览"></section>
+      <nav id="section-nav" class="section-nav" aria-label="快速跳转"></nav>
       <section id="dashboard" aria-live="polite"></section>
       <footer class="footer-note">数据来自各平台公开接口与授权运营数据 · 北京时间</footer>
     </main>
@@ -48,13 +49,7 @@
           <p class="latest-date"></p>
         </div>
         <div class="metric-grid"></div>
-        <div class="chart-wrap">
-          <div class="chart-title-row">
-            <span class="chart-title">趋势</span>
-            <span class="chart-note"></span>
-          </div>
-          <svg class="trend-chart" viewBox="0 0 640 184" role="img" aria-label="数据趋势图"></svg>
-        </div>
+        <div class="chart-list"></div>
       </article>
     </template>
     <script src="app.js"></script>

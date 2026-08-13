@@ -12,6 +12,7 @@ COLLECTORS = [
     ("Facebook", "facebook_daily.py"),
     ("YouTube", "youtube_daily.py"),
     ("Dashboard data", "export_dashboard_data.py"),
+    ("Dashboard publish", "publish_dashboard.py"),
 ]
 
 
