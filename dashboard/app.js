@@ -108,9 +108,9 @@ function drawDualChart(wrapper, points, config) {
   }).join("");
   const bars = points.map((point, index) => {
     if (point[config.right.key] == null) return "";
-    const valueY = y(point[config.right.key], rightScale); const zeroY = y(0, rightScale); const barWidth = Math.min(32, plotWidth / Math.max(points.length * 1.8, 2));
+    const valueY = y(point[config.right.key], rightScale); const baselineY = top + plotHeight; const barWidth = Math.min(32, plotWidth / Math.max(points.length * 1.8, 2));
     const tooltipText = `${point.date}\n${config.left.label}  ${config.left.format ? config.left.format(point[config.left.key]) : formatNumber(point[config.left.key])}\n${config.right.label}  ${config.right.format ? config.right.format(point[config.right.key]) : formatNumber(point[config.right.key])}`;
-    return `<rect class="bar interactive-bar" data-chart="${chartId}" data-tip="${escapeHtml(tooltipText)}" tabindex="0" role="img" aria-label="${point.date}，${config.left.label} ${formatNumber(point[config.left.key])}，${config.right.label} ${formatNumber(point[config.right.key])}" x="${x(index)-barWidth/2}" y="${Math.min(valueY, zeroY)}" width="${barWidth}" height="${Math.max(1, Math.abs(zeroY-valueY))}" fill="${config.right.color}"/>`;
+    return `<rect class="bar interactive-bar" data-chart="${chartId}" data-tip="${escapeHtml(tooltipText)}" tabindex="0" role="img" aria-label="${point.date}，${config.left.label} ${formatNumber(point[config.left.key])}，${config.right.label} ${formatNumber(point[config.right.key])}" x="${x(index)-barWidth/2}" y="${Math.min(valueY, baselineY)}" width="${barWidth}" height="${Math.max(1, baselineY-valueY)}" fill="${config.right.color}"/>`;
   }).join("");
   const dots = points.flatMap((point, index) => series.filter((seriesConfig) => seriesConfig.kind !== "bar" && point[seriesConfig.key] != null).map((seriesConfig) => {
     const leftText = config.left.format ? config.left.format(point[config.left.key]) : formatNumber(point[config.left.key]);
