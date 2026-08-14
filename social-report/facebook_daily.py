@@ -33,6 +33,8 @@ DAILY_HEADERS = [
     "status",
     "month_views",
     "month_interactions",
+    "published_count",
+    "month_published_count",
 ]
 
 
@@ -124,7 +126,9 @@ def read_metric_boxes(page: Page) -> list[tuple[str, str]]:
     return metrics
 
 
-def collect_metricool(profile_dir: Path) -> tuple[int, int, int, int, int, int]:
+def collect_metricool(
+    profile_dir: Path,
+) -> tuple[int, int, int, int, int, int, int, int]:
     with sync_playwright() as playwright:
         context = playwright.chromium.launch_persistent_context(
             user_data_dir=str(profile_dir),
@@ -150,6 +154,7 @@ def collect_metricool(profile_dir: Path) -> tuple[int, int, int, int, int, int]:
             lost = parse_number(first_metric(metrics, "Lost"))
             interaction_raw = first_metric(metrics, "Interactions")
             interactions = parse_number(interaction_raw)
+            published_count = parse_number(first_metric(metrics, "Total content")) or 0
 
             if followers is None or views is None or acquired is None or lost is None:
                 raise RuntimeError("Metricool returned a blank required Facebook metric")
@@ -168,6 +173,9 @@ def collect_metricool(profile_dir: Path) -> tuple[int, int, int, int, int, int]:
             month_interactions = parse_number(
                 first_metric(month_metrics, "Interactions")
             )
+            month_published_count = (
+                parse_number(first_metric(month_metrics, "Total content")) or 0
+            )
             if month_views is None:
                 raise RuntimeError("Metricool returned a blank monthly view metric")
             if month_interactions is None:
@@ -185,6 +193,8 @@ def collect_metricool(profile_dir: Path) -> tuple[int, int, int, int, int, int]:
                 interactions,
                 month_views,
                 month_interactions,
+                published_count,
+                month_published_count,
             )
         finally:
             context.close()
@@ -249,6 +259,8 @@ def main() -> None:
         _period_interactions,
         month_views,
         month_interactions,
+        published_count,
+        month_published_count,
     ) = collect_metricool(profile_dir)
 
     sheets = gspread.service_account(filename=str(credentials_path))
@@ -263,7 +275,7 @@ def main() -> None:
     elif values[0] != DAILY_HEADERS:
         daily_sheet.update(
             values=[DAILY_HEADERS],
-            range_name="A1:O1",
+            range_name="A1:Q1",
             value_input_option="RAW",
         )
 
@@ -296,13 +308,15 @@ def main() -> None:
         "success",
         month_views,
         month_interactions,
+        published_count,
+        month_published_count,
     ]
 
     existing_row = find_existing_row(values, report_date)
     if existing_row:
         daily_sheet.update(
             values=[row],
-            range_name=f"A{existing_row}:O{existing_row}",
+            range_name=f"A{existing_row}:Q{existing_row}",
             value_input_option="USER_ENTERED",
         )
         action = "updated"
@@ -318,7 +332,9 @@ def main() -> None:
             (
                 f"{action}; source=Metricool; "
                 f"month_views_scope=posts_published_in_month; "
-                f"daily_metrics=month_snapshot_delta"
+                f"daily_metrics=month_snapshot_delta; "
+                f"published_count={published_count}; "
+                f"month_published_count={month_published_count}"
             ),
         ],
         value_input_option="RAW",
@@ -331,6 +347,8 @@ def main() -> None:
     print(f"INTERACTIONS={interactions}")
     print(f"MONTH_VIEWS={month_views}")
     print(f"MONTH_INTERACTIONS={month_interactions}")
+    print(f"PUBLISHED_COUNT={published_count}")
+    print(f"MONTH_PUBLISHED_COUNT={month_published_count}")
     print(f"SHEET_ACTION={action}")
 
 

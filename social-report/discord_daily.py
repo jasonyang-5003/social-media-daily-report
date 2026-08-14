@@ -26,6 +26,8 @@ DAILY_HEADERS = [
     "status",
     "month_views",
     "month_interactions",
+    "published_count",
+    "month_published_count",
 ]
 
 
@@ -64,6 +66,30 @@ def previous_member_count(
     return max(candidates, key=lambda item: item[0])[1]
 
 
+def previous_month_published_count(
+    values: list[list[str]], report_date: str, region: str
+) -> int | None:
+    candidates: list[tuple[str, int]] = []
+    month_prefix = report_date[:7]
+    for row in values[1:]:
+        if (
+            len(row) < 17
+            or row[1] != PLATFORM
+            or row[2] != region
+            or row[0] >= report_date
+            or not row[0].startswith(month_prefix)
+            or row[16] == ""
+        ):
+            continue
+        try:
+            candidates.append((row[0], int(float(row[16].replace(",", "")))))
+        except (ValueError, AttributeError):
+            continue
+    if not candidates:
+        return None
+    return max(candidates, key=lambda item: item[0])[1]
+
+
 def main() -> None:
     base_dir = Path(__file__).resolve().parent
     env = load_env(base_dir / ".env")
@@ -93,7 +119,7 @@ def main() -> None:
     elif values[0] != DAILY_HEADERS:
         daily_sheet.update(
             values=[DAILY_HEADERS],
-            range_name="A1:O1",
+            range_name="A1:Q1",
             value_input_option="RAW",
         )
 
@@ -118,15 +144,28 @@ def main() -> None:
                     if channel.get("type") in {0, 5}
                 }
             )
-            active_users, readable_channels, skipped_channels = collect_active_users(
-                discord, channel_ids, start, end
-            )
+            (
+                active_users,
+                readable_channels,
+                skipped_channels,
+                published_count,
+            ) = collect_active_users(discord, channel_ids, start, end)
             member_count = int(guild.get("approximate_member_count") or 0)
             active_rate = len(active_users) / member_count if member_count else 0
             previous_count = previous_member_count(values, report_date, region)
             net_growth = (
                 member_count - previous_count if previous_count is not None else ""
             )
+            previous_month_published = previous_month_published_count(
+                values, report_date, region
+            )
+            if previous_month_published is None:
+                month_start = start.replace(day=1)
+                _, _, _, month_published_count = collect_active_users(
+                    discord, channel_ids, month_start, end
+                )
+            else:
+                month_published_count = previous_month_published + published_count
             row = [
                 report_date,
                 PLATFORM,
@@ -143,13 +182,15 @@ def main() -> None:
                 "success",
                 "",
                 "",
+                published_count,
+                month_published_count,
             ]
 
             existing_row = find_existing_row(values, report_date, region)
             if existing_row:
                 daily_sheet.update(
                     values=[row],
-                    range_name=f"A{existing_row}:O{existing_row}",
+                    range_name=f"A{existing_row}:Q{existing_row}",
                     value_input_option="USER_ENTERED",
                 )
                 action = "updated"
@@ -166,7 +207,9 @@ def main() -> None:
                     (
                         f"{action}; guild={guild_name}; "
                         f"readable_channels={readable_channels}; "
-                        f"skipped_channels={skipped_channels}"
+                        f"skipped_channels={skipped_channels}; "
+                        f"published_count={published_count}; "
+                        f"month_published_count={month_published_count}"
                     ),
                 ],
                 value_input_option="RAW",
@@ -179,6 +222,8 @@ def main() -> None:
             print(f"NET_GROWTH={net_growth}")
             print(f"ACTIVE_MEMBERS={len(active_users)}")
             print(f"ACTIVE_RATE={active_rate:.4%}")
+            print(f"PUBLISHED_COUNT={published_count}")
+            print(f"MONTH_PUBLISHED_COUNT={month_published_count}")
             print(f"READABLE_CHANNELS={readable_channels}")
             print(f"SHEET_ACTION={action}")
         except Exception as exc:

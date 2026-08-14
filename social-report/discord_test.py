@@ -60,10 +60,11 @@ def collect_active_users(
     channel_ids: list[str],
     start: datetime,
     end: datetime,
-) -> tuple[set[str], int, int]:
+) -> tuple[set[str], int, int, int]:
     active_users: set[str] = set()
     readable_channels = 0
     skipped_channels = 0
+    published_count = 0
     start_snowflake = datetime_to_snowflake(start)
 
     for channel_id in channel_ids:
@@ -90,6 +91,7 @@ def collect_active_users(
                     author = message.get("author", {})
                     if not author.get("bot") and author.get("id"):
                         active_users.add(author["id"])
+                        published_count += 1
 
                 next_cursor = int(messages[-1]["id"])
                 if reached_end or next_cursor <= cursor or len(messages) < 100:
@@ -104,7 +106,7 @@ def collect_active_users(
         if channel_readable:
             readable_channels += 1
 
-    return active_users, readable_channels, skipped_channels
+    return active_users, readable_channels, skipped_channels, published_count
 
 
 def main() -> None:
@@ -132,7 +134,7 @@ def main() -> None:
     start = today_utc - timedelta(days=1)
     end = today_utc
 
-    active_users, readable_channels, skipped_channels = collect_active_users(
+    active_users, readable_channels, skipped_channels, published_count = collect_active_users(
         client, channel_ids, start, end
     )
     member_count = guild.get("approximate_member_count") or 0
@@ -143,6 +145,7 @@ def main() -> None:
     print(f"MEMBER_COUNT={member_count}")
     print(f"ACTIVE_MEMBERS={len(active_users)}")
     print(f"ACTIVE_RATE={active_rate:.4%}")
+    print(f"PUBLISHED_COUNT={published_count}")
     print(f"READABLE_CHANNELS={readable_channels}")
     print(f"SKIPPED_CHANNELS={skipped_channels}")
 

@@ -29,6 +29,8 @@ DAILY_HEADERS = [
     "status",
     "month_views",
     "month_interactions",
+    "published_count",
+    "month_published_count",
 ]
 SNAPSHOT_HEADERS = [
     "date",
@@ -202,7 +204,7 @@ def upsert_daily(sheet, values: list[list[str]], row: list) -> str:
         ):
             sheet.update(
                 values=[row],
-                range_name=f"A{row_number}:O{row_number}",
+                range_name=f"A{row_number}:Q{row_number}",
                 value_input_option="USER_ENTERED",
             )
             return "updated"
@@ -317,6 +319,14 @@ def main() -> None:
         month_interactions = sum(
             video["interactions"] for video in month_videos
         )
+        published_count = sum(
+            1
+            for video in month_videos
+            if datetime.fromisoformat(
+                video["published_at"].replace("Z", "+00:00")
+            ).astimezone(beijing).date()
+            == report_day
+        )
         history = snapshot_rows(snapshot_values, channel_key)
         (
             net_growth,
@@ -348,6 +358,8 @@ def main() -> None:
             status,
             month_views,
             month_interactions,
+            published_count,
+            len(month_videos),
         ]
         action = upsert_daily(daily_sheet, daily_values, daily_row)
         daily_values = daily_sheet.get_all_values()
@@ -378,7 +390,9 @@ def main() -> None:
                     f"{action}; videos={len(video_ids)}; "
                     f"month_videos={len(month_videos)}; "
                     f"month_scope=videos_published_in_beijing_month; "
-                    f"public_interactions=likes_plus_comments; status={status}"
+                    f"public_interactions=likes_plus_comments; "
+                    f"published_count={published_count}; "
+                    f"month_published_count={len(month_videos)}; status={status}"
                 ),
             ],
             value_input_option="RAW",
@@ -392,6 +406,8 @@ def main() -> None:
         print(f"DAILY_INTERACTIONS={daily_interactions}")
         print(f"MONTH_VIEWS={month_views}")
         print(f"MONTH_INTERACTIONS={month_interactions}")
+        print(f"PUBLISHED_COUNT={published_count}")
+        print(f"MONTH_PUBLISHED_COUNT={len(month_videos)}")
         print(f"VIDEOS_SCANNED={len(video_ids)}")
         print(f"MONTH_VIDEOS={len(month_videos)}")
         print(f"SHEET_ACTION={action}")

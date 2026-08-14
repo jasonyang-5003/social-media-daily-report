@@ -32,6 +32,8 @@ DAILY_HEADERS = [
     "status",
     "month_views",
     "month_interactions",
+    "published_count",
+    "month_published_count",
 ]
 
 
@@ -264,7 +266,7 @@ def main() -> None:
     elif values[0] != DAILY_HEADERS:
         daily_sheet.update(
             values=[DAILY_HEADERS],
-            range_name="A1:O1",
+            range_name="A1:Q1",
             value_input_option="RAW",
         )
 
@@ -276,6 +278,11 @@ def main() -> None:
         int(item.get(field) or 0)
         for item in month_items
         for field in ("likeCount", "replyCount", "retweetCount", "quoteCount")
+    )
+    published_count = sum(
+        1
+        for item in month_items
+        if start <= parse_created_at(str(item["createdAt"])) < end
     )
     previous_totals = previous_month_totals(values, report_date)
     if previous_totals is None:
@@ -300,13 +307,15 @@ def main() -> None:
         "success",
         month_views,
         month_interactions,
+        published_count,
+        len(month_items),
     ]
 
     existing_row = find_existing_row(values, report_date)
     if existing_row:
         daily_sheet.update(
             values=[row],
-            range_name=f"A{existing_row}:O{existing_row}",
+            range_name=f"A{existing_row}:Q{existing_row}",
             value_input_option="USER_ENTERED",
         )
         action = "updated"
@@ -322,7 +331,10 @@ def main() -> None:
             "success",
             (
                 f"{action}; returned={len(items)}; processed={len(month_items)}; "
-                f"daily_metrics=month_snapshot_delta; usage_usd={usage_usd:.6f}"
+                f"daily_metrics=month_snapshot_delta; "
+                f"published_count={published_count}; "
+                f"month_published_count={len(month_items)}; "
+                f"usage_usd={usage_usd:.6f}"
             ),
         ],
         value_input_option="RAW",
@@ -335,6 +347,8 @@ def main() -> None:
     print(f"INTERACTIONS={interactions}")
     print(f"MONTH_VIEWS={month_views}")
     print(f"MONTH_INTERACTIONS={month_interactions}")
+    print(f"PUBLISHED_COUNT={published_count}")
+    print(f"MONTH_PUBLISHED_COUNT={len(month_items)}")
     print(f"RETURNED_ITEMS={len(items)}")
     print(f"PROCESSED_ITEMS={len(month_items)}")
     print(f"QUERY_SINCE={month_start.date().isoformat()}")

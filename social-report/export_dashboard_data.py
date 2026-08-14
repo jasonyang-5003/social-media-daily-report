@@ -97,6 +97,8 @@ def main() -> None:
                     "monthInteractions": number(row.get("month_interactions")),
                     "activeMembers": number(row.get("active_members")),
                     "activeRate": number(row.get("active_rate")),
+                    "publishedCount": number(row.get("published_count")),
+                    "monthPublished": number(row.get("month_published_count")),
                     "status": str(row.get("status", "")),
                 }
             )
