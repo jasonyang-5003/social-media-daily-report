@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#0b1220" />
     <meta name="description" content="UgPhone 社交媒体运营数据仪表盘" />
     <title>社媒数据仪表盘 · UgPhone</title>
-    <link rel="stylesheet" href="styles.css?v=20260814-content-metrics" />
+    <link rel="stylesheet" href="styles.css?v=20260814-sticky-controls" />
   </head>
   <body>
     <a class="skip-link" href="#dashboard">跳到数据内容</a>
@@ -22,16 +22,18 @@
         </div>
         <div class="toolbar">
           <div class="status-pill"><span class="status-dot"></span><span>每日 09:40 更新</span></div>
-          <div class="range-tabs" role="tablist" aria-label="数据时间范围">
-            <button class="range-tab active" data-range="today" role="tab" aria-selected="true">今日</button>
-            <button class="range-tab" data-range="7d" role="tab" aria-selected="false">近 7 天</button>
-            <button class="range-tab" data-range="month" role="tab" aria-selected="false">本月</button>
-          </div>
         </div>
       </header>
 
       <section id="overview" class="overview" aria-label="数据概览"></section>
-      <nav id="section-nav" class="section-nav" aria-label="快速跳转"></nav>
+      <div class="dashboard-controls">
+        <div class="range-tabs" role="tablist" aria-label="数据时间范围">
+          <button class="range-tab active" data-range="today" role="tab" aria-selected="true">今日</button>
+          <button class="range-tab" data-range="7d" role="tab" aria-selected="false">近 7 天</button>
+          <button class="range-tab" data-range="month" role="tab" aria-selected="false">本月</button>
+        </div>
+        <nav id="section-nav" class="section-nav" aria-label="快速跳转"></nav>
+      </div>
       <section id="dashboard" aria-live="polite"></section>
       <footer class="footer-note">数据来自各平台公开接口与授权运营数据 · 北京时间</footer>
     </main>
