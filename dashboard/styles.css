@@ -31,9 +31,9 @@ h1 { margin: 0; font-size: clamp(25px, 3vw, 34px); line-height: 1.15; letter-spa
 .toolbar { flex-wrap: wrap; justify-content: flex-end; gap: 12px; }
 .status-pill { display: inline-flex; align-items: center; gap: 7px; min-height: 40px; padding: 0 12px; border: 1px solid #344054; border-radius: 999px; color: #d0d5dd; font-size: 12px; white-space: nowrap; }
 .status-dot { width: 7px; height: 7px; border-radius: 50%; background: #32d583; box-shadow: 0 0 0 4px rgba(50,213,131,.14); }
-.range-tabs { display: flex; gap: 3px; padding: 4px; border: 1px solid #344054; border-radius: 12px; background: #182230; }
-.range-tab { min-height: 40px; padding: 0 16px; border: 0; border-radius: 8px; background: transparent; color: #b9c3d4; font-size: 14px; font-weight: 700; cursor: pointer; transition: background .2s, color .2s, transform .15s; touch-action: manipulation; }
-.range-tab:hover { color: #fff; background: #243247; }.range-tab:active { transform: scale(.97); }.range-tab:focus-visible { outline: 3px solid #84adff; outline-offset: 2px; }.range-tab.active { color: var(--ink); background: #fff; box-shadow: 0 2px 5px rgba(0,0,0,.2); }
+.range-tabs { display: flex; gap: 3px; padding: 4px; border: 1px solid #d0d5dd; border-radius: 12px; background: #fff; }
+.range-tab { min-height: 40px; padding: 0 16px; border: 0; border-radius: 8px; background: #fff; color: var(--ink); font-size: 14px; font-weight: 700; cursor: pointer; transition: background .2s, color .2s, transform .15s; touch-action: manipulation; }
+.range-tab:hover { color: var(--ink); background: #f2f4f7; }.range-tab:active { transform: scale(.97); }.range-tab:focus-visible { outline: 3px solid #84adff; outline-offset: 2px; }.range-tab.active { color: #fff; background: var(--navy); box-shadow: 0 2px 5px rgba(0,0,0,.2); }
 .overview { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin: 22px 0 30px; }
 .overview-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 82px; padding: 16px 18px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); box-shadow: 0 2px 7px rgba(16,24,40,.04); }
 .overview-label { margin: 0 0 4px; color: var(--muted); font-size: 12px; font-weight: 600; }.overview-value { margin: 0; font-size: 23px; font-weight: 800; letter-spacing: -.03em; font-variant-numeric: tabular-nums; }.overview-icon { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 11px; background: #eef3ff; color: #356ae6; }.overview-icon svg { width: 19px; height: 19px; }
