@@ -41,7 +41,10 @@ function entityMetrics(entity, points) {
     metrics.push(["本月浏览量", formatNumber(latest.monthViews)]);
     metrics.push(["本月互动量", formatNumber(latest.monthInteractions)]);
   }
-  metrics.push([`${label}发布内容`, formatNumber(sum(points, "publishedCount"))]);
+  metrics.push([
+    isDiscord ? `${label}发布信息数` : `${label}发布内容`,
+    formatNumber(sum(points, "publishedCount")),
+  ]);
   return metrics;
 }
 
@@ -50,7 +53,7 @@ function chartConfigs(entity) {
     return [
       { title: "成员规模与净增长", left: { key: "audience", label: "成员总数", color: entity.color, kind: "line" }, right: { key: "netGrowth", label: "净增长", color: "#F79009", kind: "bar" } },
       { title: "社区活跃趋势", left: { key: "activeMembers", label: "活跃成员", color: entity.color, kind: "line" }, right: { key: "activeRate", label: "活跃率", color: "#7C3AED", format: formatRate, kind: "bar" } },
-      { title: "内容发布趋势", left: { key: "monthPublished", label: "本月累计发布", color: "#0E9384", kind: "line" }, right: { key: "publishedCount", label: "当日发布内容", color: "#2E90FA", kind: "bar" } },
+      { title: "信息发布趋势", left: { key: "monthPublished", label: "本月累计信息", color: "#0E9384", kind: "line" }, right: { key: "publishedCount", label: "当日发布信息", color: "#2E90FA", kind: "bar" } },
     ];
   }
   return [
