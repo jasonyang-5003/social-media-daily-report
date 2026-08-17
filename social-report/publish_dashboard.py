@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+import shutil
 import subprocess
 import time
 from pathlib import Path
@@ -14,6 +16,30 @@ def run(command: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
         errors="replace",
         capture_output=True,
         check=False,
+    )
+
+
+def find_git() -> str:
+    configured = os.environ.get("GIT_EXECUTABLE", "").strip()
+    candidates = [
+        Path(configured) if configured else None,
+        Path(shutil.which("git")) if shutil.which("git") else None,
+        Path(os.environ.get("ProgramFiles", "")) / "Git" / "cmd" / "git.exe",
+    ]
+    local_app_data = Path(os.environ.get("LOCALAPPDATA", ""))
+    candidates.extend(
+        sorted(
+            local_app_data.glob(
+                "GitHubDesktop/app-*/resources/app/git/cmd/git.exe"
+            ),
+            reverse=True,
+        )
+    )
+    for candidate in candidates:
+        if candidate and candidate.is_file():
+            return str(candidate)
+    raise RuntimeError(
+        "Git executable was not found; install Git or set GIT_EXECUTABLE"
     )
 
 
@@ -45,9 +71,12 @@ def run_with_retry(
 def main() -> None:
     root_dir = Path(__file__).resolve().parent.parent
     data_file = "dashboard/data/metrics.json"
+    git = find_git()
 
-    run_with_retry(["git", "add", "--", data_file], root_dir, "Git stage")
-    changed = run(["git", "diff", "--cached", "--quiet", "--", data_file], root_dir)
+    run_with_retry([git, "add", "--", data_file], root_dir, "Git stage")
+    changed = run(
+        [git, "diff", "--cached", "--quiet", "--", data_file], root_dir
+    )
     if changed.returncode == 0:
         print("DASHBOARD_PUBLISH=SKIPPED_NO_DATA_CHANGE")
         return
@@ -55,10 +84,10 @@ def main() -> None:
         require_success(changed, "Git diff")
 
     require_success(
-        run(["git", "commit", "-m", "Update dashboard metrics"], root_dir),
+        run([git, "commit", "-m", "Update dashboard metrics"], root_dir),
         "Git commit",
     )
-    run_with_retry(["git", "push", "origin", "main"], root_dir, "Git push")
+    run_with_retry([git, "push", "origin", "main"], root_dir, "Git push")
     print("DASHBOARD_PUBLISH=SUCCESS")
 
 
