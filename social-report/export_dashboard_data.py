@@ -45,13 +45,6 @@ ENTITY_CONFIG = {
         "color": "#FF0033",
         "audience_label": "订阅者",
     },
-    ("YouTube", "UgScript"): {
-        "id": "youtube-ugscript",
-        "label": "YouTube · UgScript",
-        "group": "YouTube 频道",
-        "color": "#F97316",
-        "audience_label": "订阅者",
-    },
 }
 
 

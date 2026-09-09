@@ -35,7 +35,7 @@ def run_collector(base_dir: Path, platform: str, script_name: str) -> bool:
     if result.stdout:
         print(result.stdout.rstrip(), flush=True)
     if result.stderr:
-        print(result.stderr.rstrip(), file=sys.stderr, flush=True)
+        print(result.stderr.rstrip(), flush=True)
 
     if result.returncode == 0:
         print(f"===== {platform} SUCCESS =====", flush=True)
@@ -43,7 +43,6 @@ def run_collector(base_dir: Path, platform: str, script_name: str) -> bool:
 
     print(
         f"===== {platform} FAILED (exit={result.returncode}) =====",
-        file=sys.stderr,
         flush=True,
     )
     return False
@@ -66,6 +65,13 @@ def main() -> int:
     print(f"SUCCEEDED={','.join(succeeded) if succeeded else 'none'}")
     print(f"FAILED={','.join(failed) if failed else 'none'}")
     print(f"DAILY_REPORT_FINISHED={finished_at.isoformat(timespec='seconds')}")
+
+    if failed:
+        message = "社媒日报异常：" + "、".join(failed) + " 采集失败，请检查账号封禁、授权或接口状态。"
+        try:
+            subprocess.run(["msg.exe", "*", message], check=False, capture_output=True)
+        except OSError:
+            pass
 
     return 1 if failed else 0
 

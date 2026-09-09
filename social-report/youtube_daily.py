@@ -426,6 +426,7 @@ def main() -> None:
 
     if failed_channels:
         print(f"YOUTUBE_PARTIAL_FAILURE={','.join(failed_channels)}")
+        raise SystemExit(1)
 
 if __name__ == "__main__":
     main()
