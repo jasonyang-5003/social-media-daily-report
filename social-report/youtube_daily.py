@@ -283,8 +283,20 @@ def main() -> None:
     daily_values = ensure_headers(daily_sheet, DAILY_HEADERS)
     snapshot_values = ensure_headers(snapshot_sheet, SNAPSHOT_HEADERS)
 
+    failed_channels = []
     for channel_key, config in CHANNELS.items():
-        channel = youtube.channel(config["channel_id"])
+        try:
+            channel = youtube.channel(config["channel_id"])
+        except Exception as exc:
+            failed_channels.append(channel_key)
+            message = f"{type(exc).__name__}: {exc}"
+            log_sheet.append_row(
+                [collected_at, f"YouTube:{config['region']}", "failed", message],
+                value_input_option="RAW",
+            )
+            print(f"CHANNEL_FAILED={config['name']}")
+            print(f"CHANNEL_ERROR={message}")
+            continue
         title = channel.get("snippet", {}).get("title", "")
         if title != config["name"]:
             raise RuntimeError(
@@ -412,6 +424,8 @@ def main() -> None:
         print(f"MONTH_VIDEOS={len(month_videos)}")
         print(f"SHEET_ACTION={action}")
 
+    if failed_channels:
+        print(f"YOUTUBE_PARTIAL_FAILURE={','.join(failed_channels)}")
 
 if __name__ == "__main__":
     main()
