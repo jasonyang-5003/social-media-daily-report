@@ -101,24 +101,52 @@ def choose_yesterday(page: Page) -> None:
     picker = page.locator('[aria-label="Evolution date range picker"]')
     picker.locator("button").first.click()
     page.get_by_role("button", name="Yesterday", exact=True).click()
-    page.wait_for_timeout(2_500)
+    page.wait_for_timeout(8_000)
 
 
 def choose_current_month(page: Page) -> None:
     picker = page.locator('[aria-label="Evolution date range picker"]')
     picker.locator("button").first.click()
     page.get_by_role("button", name="Current month", exact=True).click()
-    page.wait_for_timeout(2_500)
+    page.wait_for_timeout(8_000)
+
+
+def choose_day(page: Page, report_date: str) -> None:
+    picker = page.locator('[aria-label="Evolution date range picker"]')
+    picker.locator("button").first.click()
+    selector = f".vc-day.in-month.id-{report_date} .vc-day-content:visible"
+    day = page.locator(selector).first
+    if day.count() == 0:
+        page.locator(".vc-arrow.vc-prev:visible").last.click()
+        page.wait_for_timeout(800)
+        day = page.locator(selector).first
+    if day.count() == 0 or day.get_attribute("aria-disabled") == "true":
+        raise RuntimeError(f"Metricool date is unavailable: {report_date}")
+    day.click()
+    page.locator(selector).first.click()
+    page.wait_for_timeout(8_000)
+    date = datetime.fromisoformat(report_date)
+    expected = f"{date.strftime('%b')} {date.day}, {date.year}"
+    if picker.inner_text().count(expected) != 2:
+        raise RuntimeError(f"Metricool did not select the requested day: {report_date}")
 
 
 def read_metric_boxes(page: Page) -> list[tuple[str, str]]:
     page.locator('[aria-label="Analysis Metric Box"]').first.wait_for(
         state="visible", timeout=30_000
     )
+    boxes = page.locator('[aria-label="Analysis Metric Box"]')
+    previous = boxes.all_text_contents()
+    for _ in range(10):
+        page.wait_for_timeout(1000)
+        current = boxes.all_text_contents()
+        if current == previous:
+            break
+        previous = current
+    else:
+        raise RuntimeError("Metricool metrics did not stabilize")
     metrics = []
-    for text in page.locator(
-        '[aria-label="Analysis Metric Box"]'
-    ).all_text_contents():
+    for text in current:
         try:
             metrics.append(split_metric_box(text))
         except ValueError:
@@ -128,7 +156,8 @@ def read_metric_boxes(page: Page) -> list[tuple[str, str]]:
 
 def collect_metricool(
     profile_dir: Path,
-) -> tuple[int, int, int, int, int, int, int, int]:
+    report_date: str | None = None,
+) -> tuple[int, int, int | None, int | None, int | None, int | None, int | None, int | None]:
     with sync_playwright() as playwright:
         context = playwright.chromium.launch_persistent_context(
             user_data_dir=str(profile_dir),
@@ -145,7 +174,10 @@ def collect_metricool(
                     "Metricool login expired; run: py -3.12 facebook_login.py"
                 )
 
-            choose_yesterday(page)
+            if report_date:
+                choose_day(page, report_date)
+            else:
+                choose_yesterday(page)
             metrics = read_metric_boxes(page)
 
             followers = parse_number(first_metric(metrics, "Followers"))
@@ -154,16 +186,15 @@ def collect_metricool(
             lost = parse_number(first_metric(metrics, "Lost"))
             interaction_raw = first_metric(metrics, "Interactions")
             interactions = parse_number(interaction_raw)
-            published_count = parse_number(first_metric(metrics, "Total content")) or 0
+            published_count = parse_number(first_metric(metrics, "Total content"))
 
-            if followers is None or views is None or acquired is None or lost is None:
+            if followers is None or acquired is None or lost is None:
                 raise RuntimeError("Metricool returned a blank required Facebook metric")
 
-            if interactions is None:
-                total_content = parse_number(first_metric(metrics, "Total content"))
-                interactions = 0 if total_content is None else None
-            if interactions is None:
-                raise RuntimeError("Metricool returned an unavailable interaction metric")
+            # Historical date filters do not recreate historical post-view snapshots.
+            if report_date:
+                return (followers, acquired - lost, views, interactions,
+                        None, None, published_count, None)
 
             choose_current_month(page)
             month_metrics = read_metric_boxes(page)
@@ -174,17 +205,8 @@ def collect_metricool(
                 first_metric(month_metrics, "Interactions")
             )
             month_published_count = (
-                parse_number(first_metric(month_metrics, "Total content")) or 0
+                parse_number(first_metric(month_metrics, "Total content"))
             )
-            if month_views is None:
-                raise RuntimeError("Metricool returned a blank monthly view metric")
-            if month_interactions is None:
-                month_total_content = parse_number(
-                    first_metric(month_metrics, "Total content")
-                )
-                month_interactions = 0 if month_total_content is None else None
-            if month_interactions is None:
-                raise RuntimeError("Metricool returned a blank monthly interaction metric")
 
             return (
                 followers,
@@ -202,7 +224,7 @@ def collect_metricool(
 
 def find_existing_row(values: list[list[str]], report_date: str) -> int | None:
     for row_number, row in enumerate(values[1:], start=2):
-        if len(row) >= 2 and row[0] == report_date and row[1] == PLATFORM:
+        if len(row) >= 3 and row[0] == report_date and row[1:3] == [PLATFORM, REGION]:
             return row_number
     return None
 
@@ -212,12 +234,13 @@ def previous_month_totals(
 ) -> tuple[str, int, int] | None:
     candidates: list[tuple[str, int, int]] = []
     month_prefix = report_date[:7]
+    previous_date = (datetime.fromisoformat(report_date) - timedelta(days=1)).date().isoformat()
     for row in values[1:]:
         if (
             len(row) < 15
             or row[1] != PLATFORM
             or row[2] != REGION
-            or row[0] >= report_date
+            or row[0] != previous_date
             or not row[0].startswith(month_prefix)
             or row[13] == ""
             or row[14] == ""
@@ -248,10 +271,10 @@ def main() -> None:
     if not sheet_id:
         raise RuntimeError("Google Sheets configuration is missing")
 
-    today_utc = datetime.now(timezone.utc).replace(
+    today_beijing = datetime.now(timezone(timedelta(hours=8))).replace(
         hour=0, minute=0, second=0, microsecond=0
     )
-    report_date = (today_utc - timedelta(days=1)).date().isoformat()
+    report_date = (today_beijing - timedelta(days=1)).date().isoformat()
     (
         followers,
         net_growth,
@@ -280,7 +303,7 @@ def main() -> None:
         )
 
     previous_totals = previous_month_totals(values, report_date)
-    if previous_totals is None:
+    if previous_totals is None or month_views is None or month_interactions is None:
         views = ""
         interactions = ""
     else:
@@ -292,6 +315,9 @@ def main() -> None:
         )
         interactions = month_interactions - previous_interactions
 
+    status = "success" if all(v is not None for v in (
+        month_views, month_interactions, published_count, month_published_count
+    )) else "partial_metricool_posts_unavailable"
     row = [
         report_date,
         PLATFORM,
@@ -305,11 +331,11 @@ def main() -> None:
         "",
         "",
         interactions,
-        "success",
-        month_views,
-        month_interactions,
-        published_count,
-        month_published_count,
+        status,
+        month_views if month_views is not None else "",
+        month_interactions if month_interactions is not None else "",
+        published_count if published_count is not None else "",
+        month_published_count if month_published_count is not None else "",
     ]
 
     existing_row = find_existing_row(values, report_date)
@@ -328,7 +354,7 @@ def main() -> None:
         [
             datetime.now(timezone.utc).isoformat(timespec="seconds"),
             PLATFORM,
-            "success",
+            status,
             (
                 f"{action}; source=Metricool; "
                 f"month_views_scope=posts_published_in_month; "
@@ -350,6 +376,10 @@ def main() -> None:
     print(f"PUBLISHED_COUNT={published_count}")
     print(f"MONTH_PUBLISHED_COUNT={month_published_count}")
     print(f"SHEET_ACTION={action}")
+    print(f"STATUS={status}")
+    if status != "success":
+        print("WARNING=Audience saved; Metricool post metrics unavailable (not zero).")
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":
