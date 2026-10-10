@@ -24,7 +24,7 @@ def main():
         print("CLOUD_SYNC=NOT_ENABLED")
         return
     base=Path(__file__).resolve().parent; env=load_env(base/".env")
-    response=requests.get(settings["url"]+"/metrics",timeout=60);response.raise_for_status();data=response.json()
+    response=requests.get(settings.get("data_url",settings["url"])+"/metrics",timeout=60);response.raise_for_status();data=response.json()
     book=gspread.service_account(filename=str((base/env["GOOGLE_CREDENTIALS_FILE"]).resolve())).open_by_key(env["GOOGLE_SHEET_ID"])
     sheet=book.worksheet("daily_metrics");values=sheet.get_all_values()
     if not values or values[0]!=DAILY_HEADERS:raise RuntimeError("Unexpected daily_metrics schema")

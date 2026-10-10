@@ -4,13 +4,29 @@
   "main": "src/worker.mjs",
   "compatibility_date": "2026-10-01",
   "workers_dev": true,
-  "services": [{ "binding": "SELF", "service": "social-media-collector" }],
-  "triggers": { "crons": ["* * * * *"] },
-  "d1_databases": [{ "binding": "DB", "database_name": "social-media-metrics", "database_id": "REPLACE_AFTER_CREATION" }],
+  "services": [
+    {
+      "binding": "SELF",
+      "service": "social-media-collector"
+    }
+  ],
+  "triggers": {
+    "crons": [
+      "* * * * *"
+    ]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "social-media-metrics",
+      "database_id": "f9564ea6-2a2c-4e31-b087-d4b3bbdc55a3"
+    }
+  ],
   "vars": {
     "DASHBOARD_ORIGIN": "https://social-media-daily-report.pages.dev",
     "APIFY_MAX_CHARGE_USD": "0.005",
     "X_USERNAME": "UgPhoneOfficial",
-    "YOUTUBE_CHANNEL_ID": "UC2tkKD_n8N9_7pS3P1R2H0g"
+    "YOUTUBE_CHANNEL_ID": "UC2tkKD_n8N9_7pS3P1R2H0g",
+    "WORKER_URL": "https://social-media-collector.yzj1299290934.workers.dev"
   }
 }

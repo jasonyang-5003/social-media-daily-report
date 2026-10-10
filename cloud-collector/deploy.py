@@ -12,6 +12,8 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import tomllib
+import os
 from pathlib import Path
 
 import requests
@@ -20,6 +22,7 @@ BASE=Path(__file__).resolve().parent
 ROOT=BASE.parent
 sys.path.insert(0,str(ROOT/"social-report"))
 from discord_test import load_env
+from net import worker_dns
 
 
 def cli(*args, secret_input=None):
@@ -32,7 +35,8 @@ def cli(*args, secret_input=None):
 
 
 def api(url,token,path,body):
-    response=requests.post(url+path,headers={"Authorization":"Bearer "+token},json=body,timeout=60)
+    with worker_dns(url):
+        response=requests.post(url+path,headers={"Authorization":"Bearer "+token},json=body,timeout=60)
     response.raise_for_status();return response.json()
 
 
@@ -82,7 +86,8 @@ def setup():
 
 def activate():
     state_path=BASE/"local-state.json";state=json.loads(state_path.read_text(encoding="utf-8"))
-    response=requests.get(state["url"]+"/metrics",timeout=60);response.raise_for_status();data=response.json()
+    with worker_dns(state["url"]):response=requests.get(state["url"]+"/metrics",timeout=60)
+    response.raise_for_status();data=response.json()
     if any(job["state"]=="failed" for job in data["health"]):raise RuntimeError("Cloud job failed; keep local collectors enabled")
     if data["health"]:raise RuntimeError("Cloud collection still pending; activation postponed")
     if len(data["entities"])!=4:raise RuntimeError("Unexpected cloud account count")
@@ -90,18 +95,39 @@ def activate():
     if any(not entity["points"] or not entity["points"][-1].get("collectedAt") for entity in data["entities"]):raise RuntimeError("Fresh cloud collection has not been verified for every account")
     state["enabled"]=True
     state_path.write_text(json.dumps(state,indent=2),encoding="utf-8")
-    (ROOT/"dashboard/cloud-config.js").write_text('window.SOCIAL_CLOUD_URL = '+json.dumps(state["url"])+ ';\n',encoding="utf-8")
+    state["data_url"]="https://social-media-daily-report.pages.dev/api/cloud"
+    state_path.write_text(json.dumps(state,indent=2),encoding="utf-8")
+    (ROOT/"dashboard/cloud-config.js").write_text('window.SOCIAL_CLOUD_URL = "/api/cloud";\n',encoding="utf-8")
     print("LOCAL_SWITCH=ENABLED; DASHBOARD_CLOUD_URL="+state["url"])
 
 
+def pages():
+    credentials=Path(os.environ["APPDATA"])/"xdg.config/.wrangler/config/default.toml"
+    auth=tomllib.loads(credentials.read_text(encoding="utf-8"))
+    headers={"Authorization":"Bearer "+auth["oauth_token"]}
+    endpoint="https://api.cloudflare.com/client/v4/accounts/7b5cebe6684ca0c4dac448600b6dcd9e/pages/projects/social-media-daily-report"
+    response=requests.get(endpoint,headers=headers,timeout=30);response.raise_for_status();project=response.json()["result"]
+    configs=project.get("deployment_configs",{})
+    updated={}
+    for mode in ("production","preview"):
+        bindings=dict(configs.get(mode,{}).get("service_bindings",{}))
+        bindings["COLLECTOR"]={"service":"social-media-collector","environment":"production"}
+        updated[mode]={"service_bindings":bindings}
+    response=requests.patch(endpoint,headers=headers,json={"deployment_configs":updated},timeout=30);response.raise_for_status()
+    if not response.json().get("success"):raise RuntimeError("Pages binding update failed")
+    print("PAGES_SERVICE_BINDING=READY")
+
+
 def main():
-    parser=argparse.ArgumentParser();parser.add_argument("mode",choices=["setup","activate","status","drain"]);args=parser.parse_args()
+    parser=argparse.ArgumentParser();parser.add_argument("mode",choices=["setup","activate","status","drain","pages"]);args=parser.parse_args()
     if args.mode=="setup":setup()
     elif args.mode=="activate":activate()
+    elif args.mode=="pages":pages()
     else:
         state=json.loads((BASE/"local-state.json").read_text(encoding="utf-8"))
         if args.mode=="drain":api(state["url"],state["admin_token"],"/admin/drain",{})
-        result=requests.get(state["url"]+"/health",timeout=60);result.raise_for_status();print(json.dumps(result.json(),ensure_ascii=True))
+        with worker_dns(state["url"]):result=requests.get(state["url"]+"/health",timeout=60)
+        result.raise_for_status();print(json.dumps(result.json(),ensure_ascii=True))
 
 
 if __name__=="__main__":main()
