@@ -4,6 +4,7 @@ import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
+from cloud_sync import cloud_settings
 
 for stream in (sys.stdout, sys.stderr):
     if hasattr(stream, "reconfigure"):
@@ -58,9 +59,17 @@ def main() -> int:
     started_at = datetime.now().astimezone()
     print(f"DAILY_REPORT_STARTED={started_at.isoformat(timespec='seconds')}")
 
+    collectors = COLLECTORS
+    if cloud_settings().get("enabled"):
+        # Switch only after remote verification; avoid duplicate Apify charges.
+        collectors = [("Cloud sync", "cloud_sync.py")] + [
+            item for item in COLLECTORS if item[0] not in {
+                "Discord", "Discord backfill", "X", "X backfill", "YouTube", "YouTube backfill"
+            }
+        ]
     results = {
         platform: run_collector(base_dir, platform, script_name)
-        for platform, script_name in COLLECTORS
+        for platform, script_name in collectors
     }
     succeeded = [platform for platform, ok in results.items() if ok]
     failed = [platform for platform, ok in results.items() if not ok]

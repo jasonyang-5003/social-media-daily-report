@@ -1,0 +1,16 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "social-media-collector",
+  "main": "src/worker.mjs",
+  "compatibility_date": "2026-10-01",
+  "workers_dev": true,
+  "services": [{ "binding": "SELF", "service": "social-media-collector" }],
+  "triggers": { "crons": ["* * * * *"] },
+  "d1_databases": [{ "binding": "DB", "database_name": "social-media-metrics", "database_id": "REPLACE_AFTER_CREATION" }],
+  "vars": {
+    "DASHBOARD_ORIGIN": "https://social-media-daily-report.pages.dev",
+    "APIFY_MAX_CHARGE_USD": "0.005",
+    "X_USERNAME": "UgPhoneOfficial",
+    "YOUTUBE_CHANNEL_ID": "UC2tkKD_n8N9_7pS3P1R2H0g"
+  }
+}

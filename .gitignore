@@ -6,6 +6,9 @@ google-service-account.json
 *.db
 **/__pycache__/
 *.pyc
+**/node_modules/
+**/.wrangler/
+cloud-collector/local-state.json
 
 # Local Metricool browser session (contains login cookies)
 **/.metricool-browser-profile/

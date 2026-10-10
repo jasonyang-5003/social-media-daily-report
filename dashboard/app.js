@@ -173,7 +173,29 @@ function render() {
 
 async function start() {
   const response = await fetch("data/metrics.json", { cache: "no-store" }); if (!response.ok) throw new Error("数据文件尚未导出");
-  state.data = await response.json(); const latest = state.data.entities.flatMap((entity) => entity.points).map((point) => point.date).sort().at(-1);
+  state.data = await response.json();
+  const alert = document.querySelector("#collection-alert");
+  if (window.SOCIAL_CLOUD_URL) {
+    try {
+      const cloudResponse = await fetch(`${window.SOCIAL_CLOUD_URL}/metrics`, {cache:"no-store",signal:AbortSignal.timeout(15000)});
+      if (!cloudResponse.ok) throw new Error("云端数据暂不可用");
+      const cloud = await cloudResponse.json();
+      for (const remote of cloud.entities) {
+        const entity = state.data.entities.find(e=>e.id===remote.id);
+        if (!entity) continue;
+        const points = new Map(entity.points.map(p=>[p.date,p]));
+        for (const point of remote.points) points.set(point.date, {...points.get(point.date), ...point});
+        entity.points = [...points.values()].sort((a,b)=>a.date.localeCompare(b.date));
+      }
+      const failed = (cloud.health || []).filter(job=>job.state==='failed');
+      if (failed.length) {
+        const names = [...new Set(failed.map(job=>state.data.entities.find(e=>e.id===job.entity)?.label||job.entity))];
+        alert.textContent = `${names.join("、")} 采集异常，请检查授权或接口状态；此状态不代表已确认封号。`;
+        alert.hidden=false;
+      }
+    } catch (error) { alert.textContent="云端连接失败，当前显示最近保存的数据。"; alert.hidden=false; }
+  }
+  const latest = state.data.entities.flatMap((entity) => entity.points).map((point) => point.date).sort().at(-1);
   document.querySelector("#updated-at").textContent = `数据截至 ${latest || "暂无"} · 北京时间每日 09:40 自动采集`; render();
 }
 document.querySelectorAll(".range-tab").forEach((button) => button.addEventListener("click", () => { state.range = button.dataset.range; document.querySelectorAll(".range-tab").forEach((item) => { const active = item === button; item.classList.toggle("active", active); item.setAttribute("aria-selected", String(active)); }); render(); }));
