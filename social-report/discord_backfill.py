@@ -30,6 +30,13 @@ def main() -> None:
     for server in DISCORD_SERVERS:
         region = server["region"]; guild_id = server.get("guild_id") or env.get(server.get("guild_id_env", ""), "")
         if not guild_id: continue
+        targets=[]
+        for offset in range((end_day-start_day).days+1):
+            date_key=(start_day+timedelta(days=offset)).isoformat(); idx=find_existing_row(values,date_key,region); row=values[idx-1] if idx else []
+            if not idx or len(row)<=16 or row[9]=="" or row[15]=="" or row[16]=="": targets.append(date_key)
+        if not targets:
+            print(f"REGION={region} TARGETS=0")
+            continue
         channels = client.get(f"/guilds/{guild_id}/channels")
         channel_ids = sorted({c["id"] for c in channels if c.get("type") in {0, 5}})
         month_start = start_day.replace(day=1)

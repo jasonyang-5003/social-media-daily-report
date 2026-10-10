@@ -39,6 +39,19 @@ def main() -> None:
         raise RuntimeError("X or Google Sheets configuration is missing")
     today = datetime.now(timezone.utc).date()
     start, end = today - timedelta(days=29), today - timedelta(days=2)
+    sheets = gspread.service_account(filename=str((base / env["GOOGLE_CREDENTIALS_FILE"]).resolve()))
+    book = sheets.open_by_key(sheet_id)
+    sheet, log = book.worksheet("daily_metrics"), book.worksheet("run_logs")
+    values = sheet.get_all_values()
+    if not values or values[0] != DAILY_HEADERS:
+        raise RuntimeError("Unexpected daily_metrics schema")
+    targets = []
+    for offset in range((end - start).days + 1):
+        key = (start + timedelta(days=offset)).isoformat(); idx = row_index(values, key); row = values[idx - 1] if idx else []
+        if not idx or len(row) <= 16 or row[15] == "" or row[16] == "": targets.append(key)
+    if not targets:
+        print(f"BACKFILL_CHECK={start}..{end} TARGETS=0")
+        return
     query_start = start.replace(day=1)
     query = f"from:{username} since:{query_start.isoformat()} until:{(today + timedelta(days=1)).isoformat()}"
     items, usage = run_actor(token, query, min(float(env.get("APIFY_MAX_CHARGE_USD", "0.005")), 0.005))
@@ -50,12 +63,6 @@ def main() -> None:
         day = parse_created_at(str(item["createdAt"])).date()
         if query_start <= day <= today - timedelta(days=1):
             dated[day.isoformat()] = dated.get(day.isoformat(), 0) + 1
-    sheets = gspread.service_account(filename=str((base / env["GOOGLE_CREDENTIALS_FILE"]).resolve()))
-    book = sheets.open_by_key(sheet_id)
-    sheet, log = book.worksheet("daily_metrics"), book.worksheet("run_logs")
-    values = sheet.get_all_values()
-    if not values or values[0] != DAILY_HEADERS:
-        raise RuntimeError("Unexpected daily_metrics schema")
     proposals = []
     for day_obj in (start + timedelta(days=i) for i in range((end - start).days + 1)):
         day = day_obj.isoformat()

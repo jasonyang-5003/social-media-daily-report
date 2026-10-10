@@ -30,6 +30,13 @@ def main() -> None:
     if not values or values[0] != DAILY_HEADERS: raise RuntimeError("Unexpected daily_metrics schema")
     client=YouTubeClient(api_key); total=0
     for key, config in CHANNELS.items():
+        targets=[]
+        for offset in range((end_day-start_day).days+1):
+            date_key=(start_day+timedelta(days=offset)).isoformat(); idx=find_row(values,date_key,config["region"]); row=values[idx-1] if idx else []
+            if not idx or len(row)<=16 or row[15]=="" or row[16]=="": targets.append(date_key)
+        if not targets:
+            print(f"CHANNEL={config['name']} TARGETS=0")
+            continue
         channel=client.channel(config["channel_id"]); uploads=channel.get("contentDetails",{}).get("relatedPlaylists",{}).get("uploads","")
         videos=client.video_metrics(client.upload_video_ids(uploads)); counts={}
         for video in videos:
