@@ -11,10 +11,13 @@ for stream in (sys.stdout, sys.stderr):
 
 
 COLLECTORS = [
+    ("Discord backfill", "discord_backfill.py"),
     ("Discord", "discord_daily.py"),
+    ("X backfill", "x_backfill.py"),
     ("X", "x_daily.py"),
     ("Facebook backfill", "facebook_backfill.py"),
     ("Facebook", "facebook_daily.py"),
+    ("YouTube backfill", "youtube_backfill.py"),
     ("YouTube", "youtube_daily.py"),
     ("Dashboard data", "export_dashboard_data.py"),
     ("Dashboard publish", "publish_dashboard.py"),
@@ -25,7 +28,7 @@ def run_collector(base_dir: Path, platform: str, script_name: str) -> bool:
     print(f"\n===== {platform} START =====", flush=True)
     result = subprocess.run(
         [sys.executable, str(base_dir / script_name)]
-        + (["--auto", "--apply"] if script_name == "facebook_backfill.py" else []),
+        + (["--auto", "--apply"] if script_name.endswith("_backfill.py") else []),
         cwd=base_dir,
         text=True,
         encoding="utf-8",
