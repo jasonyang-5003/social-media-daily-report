@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
 import {readFileSync} from 'node:fs';
-import worker,{dayAt,shiftDay,snowflake,messageDay,deltas,publicationCounts} from '../src/worker.mjs';
+import worker,{dayAt,shiftDay,snowflake,messageDay,deltas,publicationCounts,xCreatedAt} from '../src/worker.mjs';
 
 function environment() {
   const sqlite=new DatabaseSync(':memory:');sqlite.exec(readFileSync(new URL('../schema.sql',import.meta.url),'utf8'));
@@ -15,6 +15,10 @@ test('Beijing midnight and snowflake calendar boundaries',()=>{
   assert.equal(dayAt('2026-10-01T16:00:00Z'),'2026-10-02');
   assert.equal(messageDay(snowflake(Date.parse('2026-10-01T16:00:00Z'))),'2026-10-02');
   assert.equal(shiftDay('2026-10-01',-1),'2026-09-30');
+});
+test('Apify non-ISO dates parse consistently in Workers and Node',()=>{
+  assert.equal(xCreatedAt('Thu Oct 08 06:45:03 +0000 2026'),'2026-10-08T06:45:03+00:00');
+  assert.equal(dayAt(xCreatedAt('Thu Oct 08 18:45:03 +0000 2026')),'2026-10-09');
 });
 test('missing days never become one-day growth; real zero baseline works',()=>{
   assert.equal(deltas({date:'2026-10-01',audience:10},{audience:15},'2026-10-03').netGrowth,null);

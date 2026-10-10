@@ -110,11 +110,13 @@ def pages():
     configs=project.get("deployment_configs",{})
     updated={}
     for mode in ("production","preview"):
-        bindings=dict(configs.get(mode,{}).get("service_bindings",{}))
+        bindings=dict(configs.get(mode,{}).get("services",{}))
         bindings["COLLECTOR"]={"service":"social-media-collector","environment":"production"}
-        updated[mode]={"service_bindings":bindings}
+        updated[mode]={"services":bindings}
     response=requests.patch(endpoint,headers=headers,json={"deployment_configs":updated},timeout=30);response.raise_for_status()
     if not response.json().get("success"):raise RuntimeError("Pages binding update failed")
+    refreshed=requests.get(endpoint,headers=headers,timeout=30);refreshed.raise_for_status()
+    if any(refreshed.json()["result"]["deployment_configs"][mode].get("services",{}).get("COLLECTOR",{}).get("service")!="social-media-collector" for mode in updated):raise RuntimeError("Pages binding verification failed")
     print("PAGES_SERVICE_BINDING=READY")
 
 

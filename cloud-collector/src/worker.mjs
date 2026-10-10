@@ -10,6 +10,13 @@ export const dayAt = (value) => new Date(new Date(value).getTime()+8*3600e3).toI
 export const shiftDay = (day, offset) => new Date(Date.parse(day+'T00:00:00Z')+offset*86400e3).toISOString().slice(0,10);
 export const snowflake = (ms) => ((BigInt(ms)-1420070400000n)<<22n).toString();
 export const messageDay = (id) => dayAt(Number((BigInt(id)>>22n)+1420070400000n));
+export function xCreatedAt(value) {
+  const match=String(value).match(/^\w{3} (\w{3}) (\d{1,2}) (\d{2}:\d{2}:\d{2}) ([+-]\d{4}) (\d{4})$/);
+  if(!match)return value;
+  const [,month,day,time,offset,year]=match;
+  const index=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'].indexOf(month)+1;
+  return `${year}-${String(index).padStart(2,'0')}-${day.padStart(2,'0')}T${time}${offset.slice(0,3)}:${offset.slice(3)}`;
+}
 export function deltas(previous, current, date) {
   const adjacent = previous?.date === shiftDay(date,-1);
   return {
@@ -203,7 +210,7 @@ async function xDataset(env,job,p) {
   const raw=await request(`https://api.apify.com/v2/datasets/${p.dataset}/items?clean=true&format=json`,{headers:{Authorization:`Bearer ${env.APIFY_API_TOKEN}`}});
   const items=[...new Map(raw.filter(x=>x.id&&!x.noResults).map(x=>[String(x.id),x])).values()];
   if(items.length>=1000)throw new Error('X post safety limit reached');
-  const posts=items.map(x=>({...x,date:dayAt(x.createdAt)})).filter(x=>x.date<=job.date);
+  const posts=items.filter(x=>x.createdAt).map(x=>({...x,date:dayAt(xCreatedAt(x.createdAt))})).filter(x=>x.date<=job.date);
   const author=posts.find(x=>Number(x.author?.followers)>0)?.author;
   if(!author)throw new Error('X follower count unavailable');
   const month=posts.filter(x=>x.date.slice(0,7)===job.date.slice(0,7));
