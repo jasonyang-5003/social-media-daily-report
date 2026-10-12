@@ -1,4 +1,4 @@
-const state = { range: "today", data: null };
+const state = { range: "today", data: null, health: [], connectionWarning: "" };
 const nf = new Intl.NumberFormat("zh-CN");
 const formatNumber = (value) => value == null ? "暂无" : nf.format(value);
 const formatGrowth = (value) => value == null ? "暂无" : `${value > 0 ? "+" : ""}${formatNumber(value)}`;
@@ -135,9 +135,20 @@ function drawDualChart(wrapper, points, config) {
 function renderOverview() {
   const latestDates = state.data.entities.flatMap((entity) => entity.points).map((point) => point.date).sort();
   const latest = latestDates.at(-1) || "暂无";
-  const success = state.data.entities.filter((entity) => entity.points.at(-1)?.status?.startsWith("success")).length;
+  const statuses = state.data.entities.map(entity => ({ entity, ...collectionStatus(entity, state.health) }));
+  const issues = statuses.filter(item => item.level !== "normal");
+  const success = statuses.length - issues.length;
   const icons = { accounts: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3.8 20a5.2 5.2 0 0 1 10.4 0M16 5.5a3 3 0 0 1 0 5.8M18 20a5.2 5.2 0 0 0-2.8-4.6"/></svg>', date: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4M17 3v4M3 10h18"/></svg>', status: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m8 12 2.6 2.6L16.5 9"/></svg>' };
   document.querySelector("#overview").innerHTML = [["监测账号", state.data.entities.length, "accounts"], ["最新数据", latest, "date"], ["采集状态", `${success}/${state.data.entities.length} 正常`, "status"]].map(([label, value, icon]) => `<div class="overview-item"><div><p class="overview-label">${label}</p><p class="overview-value">${value}</p></div><span class="overview-icon">${icons[icon]}</span></div>`).join("");
+  const statusCard = document.querySelector("#overview").lastElementChild;
+  if (issues.length) {
+    const names = document.createElement("p"); names.className = "overview-issues";
+    names.textContent = `待检查：${issues.map(item => item.entity.label).join("、")}`;
+    statusCard.firstElementChild.appendChild(names);
+  }
+  const alert = document.querySelector("#collection-alert");
+  alert.textContent = [...issues.map(item => `${item.entity.label}：${item.text}。`), state.connectionWarning].filter(Boolean).join("\n");
+  alert.hidden = !alert.textContent;
 }
 
 function renderNavigation() {
@@ -165,6 +176,9 @@ function render() {
       const points = pickPoints(entity.points, state.range); const latest = points.at(-1) || entity.points.at(-1);
       card.id = entity.id; card.style.setProperty("--color", entity.color); node.querySelector(".entity-dot").style.background = entity.color;
       node.querySelector(".entity-type").textContent = entity.group; node.querySelector(".entity-name").textContent = entity.label; node.querySelector(".latest-date").textContent = latest ? `更新于 ${latest.date}` : "暂无数据";
+      const status = collectionStatus(entity, state.health);
+      const note = document.createElement("p"); note.className = `entity-status ${status.level}`;
+      note.textContent = status.text; node.querySelector(".entity-header").after(note);
       node.querySelector(".metric-grid").innerHTML = entityMetrics(entity, points).map(([name, value, raw]) => `<div class="metric"><p class="metric-label">${name}</p><p class="metric-value ${raw > 0 ? "positive" : raw < 0 ? "negative" : ""}">${value}</p></div>`).join("");
       const charts = node.querySelector(".chart-list"); chartConfigs(entity).forEach((config) => drawDualChart(charts, chartPoints(entity, points), config)); grid.appendChild(node);
     }); root.appendChild(section);
@@ -174,7 +188,6 @@ function render() {
 async function start() {
   const response = await fetch("data/metrics.json", { cache: "no-store" }); if (!response.ok) throw new Error("数据文件尚未导出");
   state.data = await response.json();
-  const alert = document.querySelector("#collection-alert");
   if (window.SOCIAL_CLOUD_URL) {
     try {
       const cloudResponse = await fetch(`${window.SOCIAL_CLOUD_URL}/metrics`, {cache:"no-store",signal:AbortSignal.timeout(15000)});
@@ -187,13 +200,11 @@ async function start() {
         for (const point of remote.points) points.set(point.date, {...points.get(point.date), ...point});
         entity.points = [...points.values()].sort((a,b)=>a.date.localeCompare(b.date));
       }
-      const failed = (cloud.health || []).filter(job=>job.state==='failed');
-      if (failed.length) {
-        const names = [...new Set(failed.map(job=>state.data.entities.find(e=>e.id===job.entity)?.label||job.entity))];
-        alert.textContent = `${names.join("、")} 采集异常，请检查授权或接口状态；此状态不代表已确认封号。`;
-        alert.hidden=false;
-      }
-    } catch (error) { alert.textContent="云端连接失败，当前显示最近保存的数据。"; alert.hidden=false; }
+      state.health = cloud.health || [];
+    } catch (error) {
+      const names = state.data.entities.filter(entity => entity.id !== 'facebook').map(entity => entity.label);
+      state.connectionWarning = `${names.join("、")}：云端连接失败，当前显示最近保存的数据，暂无法确认本次采集状态。`;
+    }
   }
   const latest = state.data.entities.flatMap((entity) => entity.points).map((point) => point.date).sort().at(-1);
   document.querySelector("#updated-at").textContent = `数据截至 ${latest || "暂无"} · 北京时间每日 09:40 自动采集`; render();

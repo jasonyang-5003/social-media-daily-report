@@ -14,6 +14,12 @@
   background: var(--canvas);
 }
 
+.overview-issues { margin: 6px 0 0; color: var(--red); font-size: 12px; overflow-wrap: anywhere; }
+#collection-alert { padding: 14px 18px; border: 1px solid #fedf89; border-radius: 12px; background: #fffaeb; color: #93370d; white-space: pre-line; font-size: 13px; }
+.entity-status { margin: 0 20px 14px; padding: 8px 10px; border-radius: 8px; font-size: 12px; overflow-wrap: anywhere; }
+.entity-status.normal { color: var(--green); background: #ecfdf3; }
+.entity-status.warning, .entity-status.pending { color: #93370d; background: #fffaeb; }
+
 * { box-sizing: border-box; }
 body { margin: 0; min-width: 320px; background: var(--canvas); line-height: 1.5; }
 button { font: inherit; }
