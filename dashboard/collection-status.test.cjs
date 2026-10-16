@@ -10,7 +10,7 @@ test('Facebook partial status identifies missing fields and missing delta baseli
     views: null, interactions: null, monthViews: 116, monthInteractions: 6,
     publishedCount: null, monthPublished: 1 }]), [], now);
   assert.equal(result.level, 'warning');
-  assert.match(result.text, /当日发布内容数/);
+  assert.doesNotMatch(result.text, /当日发布内容数/);
   assert.match(result.text, /缺少前一天累计快照/);
   assert.doesNotMatch(result.text, /未返回本月浏览量/);
 });

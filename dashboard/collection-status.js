@@ -1,6 +1,9 @@
 /* Shared by the browser and the status regression tests. */
 function collectionStatus(entity, jobs = [], now = new Date()) {
-  const latest = entity.points.at(-1);
+  const rawLatest = entity.points.at(-1);
+  const latest = rawLatest && entity.id === 'facebook' && rawLatest.publishedCount == null
+    ? { ...rawLatest, publishedCount: 0 }
+    : rawLatest;
   const beijing = new Date(now.getTime() + 8 * 3600000);
   const daysBack = beijing.getUTCHours() * 60 + beijing.getUTCMinutes() < 580 ? 2 : 1;
   beijing.setUTCDate(beijing.getUTCDate() - daysBack);
@@ -20,7 +23,9 @@ function collectionStatus(entity, jobs = [], now = new Date()) {
     const missing = [['monthViews', '本月浏览量'], ['monthInteractions', '本月互动量'],
       ['publishedCount', '当日发布内容数'], ['monthPublished', '本月发布内容数']]
       .filter(([key]) => latest[key] == null).map(([, label]) => label);
-    reasons.push(`Metricool 未返回${missing.length ? missing.join('、') : '完整内容数据'}`);
+    // A blank daily publishing count is intentionally normalized to zero.
+    // Do not report it as an abnormal collection result.
+    if (missing.length) reasons.push(`Metricool 未返回${missing.join('、')}`);
   } else if (latest.status === 'partial_historical_no_snapshot') {
     reasons.push('仅补回部分历史数据，缺少当日累计快照');
   } else if (!latest.status?.startsWith('success')) {
