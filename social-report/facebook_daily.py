@@ -186,7 +186,11 @@ def collect_metricool(
             lost = parse_number(first_metric(metrics, "Lost"))
             interaction_raw = first_metric(metrics, "Interactions")
             interactions = parse_number(interaction_raw)
+            # Metricool uses "-" when no content was published that day;
+            # for this daily count that is a valid zero.
             published_count = parse_number(first_metric(metrics, "Total content"))
+            if published_count is None:
+                published_count = 0
 
             if followers is None or acquired is None or lost is None:
                 raise RuntimeError("Metricool returned a blank required Facebook metric")

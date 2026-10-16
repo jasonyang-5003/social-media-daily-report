@@ -4,6 +4,11 @@ const formatNumber = (value) => value == null ? "暂无" : nf.format(value);
 const formatGrowth = (value) => value == null ? "暂无" : `${value > 0 ? "+" : ""}${formatNumber(value)}`;
 const formatRate = (value) => value == null ? "暂无" : `${(value * 100).toFixed(2)}%`;
 const rangeLabel = () => ({ today: "今日", "7d": "近 7 天", month: "本月" }[state.range]);
+function normalizePoint(entity, point) {
+  return entity.id === "facebook" && point.publishedCount == null
+    ? { ...point, publishedCount: 0 }
+    : point;
+}
 const escapeHtml = (text) => String(text).replace(/[&<>"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[char]));
 
 function pickPoints(points, range) {
@@ -65,10 +70,15 @@ function chartConfigs(entity) {
 
 function axisScale(values, includeZero = false) {
   let low = Math.min(...values), high = Math.max(...values);
-  if (includeZero) { low = Math.min(0, low); high = Math.max(0, high); }
+  if (includeZero) {
+    low = Math.min(0, low); high = Math.max(0, high);
+    const span = high - low || 1;
+    const pad = span * 0.12;
+    return { min: low < 0 ? low - pad : 0, max: high > 0 ? high + pad : 1 };
+  }
   const span = high - low || Math.max(Math.abs(high), 1);
   const pad = span * 0.12;
-  return { min: includeZero ? Math.min(0, low - pad) : low - pad, max: high + pad };
+  return { min: low - pad, max: high + pad };
 }
 
 function drawDualChart(wrapper, points, config) {
@@ -90,7 +100,7 @@ function drawDualChart(wrapper, points, config) {
     svg.innerHTML = `<text x="${width / 2}" y="${height / 2}" text-anchor="middle" class="axis-label">暂无可绘制趋势数据</text>`;
     return;
   }
-  const leftScale = axisScale(leftValues.length ? leftValues : [0]);
+  const leftScale = axisScale(leftValues.length ? leftValues : [0], config.left.key === "monthPublished");
   const rightScale = axisScale(rightValues.length ? rightValues : [0], config.right.kind === "bar");
   const xInset = Math.min(28, plotWidth / Math.max(points.length + 1, 2));
   const x = (index) => points.length === 1
@@ -188,6 +198,7 @@ function render() {
 async function start() {
   const response = await fetch("data/metrics.json", { cache: "no-store" }); if (!response.ok) throw new Error("数据文件尚未导出");
   state.data = await response.json();
+  state.data.entities.forEach(entity => { entity.points = entity.points.map(point => normalizePoint(entity, point)); });
   if (window.SOCIAL_CLOUD_URL) {
     try {
       const cloudResponse = await fetch(`${window.SOCIAL_CLOUD_URL}/metrics`, {cache:"no-store",signal:AbortSignal.timeout(15000)});
@@ -197,7 +208,7 @@ async function start() {
         const entity = state.data.entities.find(e=>e.id===remote.id);
         if (!entity) continue;
         const points = new Map(entity.points.map(p=>[p.date,p]));
-        for (const point of remote.points) points.set(point.date, {...points.get(point.date), ...point});
+        for (const point of remote.points) points.set(point.date, normalizePoint(entity, {...points.get(point.date), ...point}));
         entity.points = [...points.values()].sort((a,b)=>a.date.localeCompare(b.date));
       }
       state.health = cloud.health || [];

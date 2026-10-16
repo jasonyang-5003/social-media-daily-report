@@ -79,8 +79,7 @@ def main() -> None:
             date = str(row.get("date", ""))
             if not date:
                 continue
-            points.append(
-                {
+            point = {
                     "date": date,
                     "audience": number(row.get("followers_total")),
                     "netGrowth": number(row.get("net_growth")),
@@ -90,11 +89,15 @@ def main() -> None:
                     "monthInteractions": number(row.get("month_interactions")),
                     "activeMembers": number(row.get("active_members")),
                     "activeRate": number(row.get("active_rate")),
-                    "publishedCount": number(row.get("published_count")),
+                    "publishedCount": (
+                        number(row.get("published_count"))
+                        if platform != "Facebook"
+                        else (number(row.get("published_count")) or 0)
+                    ),
                     "monthPublished": number(row.get("month_published_count")),
                     "status": str(row.get("status", "")),
                 }
-            )
+            points.append(point)
         points.sort(key=lambda item: item["date"])
         entities.append({**config, "points": points})
 

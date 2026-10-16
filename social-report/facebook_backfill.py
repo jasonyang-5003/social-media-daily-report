@@ -93,6 +93,8 @@ def main():
                     metrics = read_metric_boxes(page)
                     followers, acquired, lost, published = [parse_number(first_metric(metrics, label))
                         for label in ("Followers", "Acquired", "Lost", "Total content")]
+                    if published is None:
+                        published = 0
                 except Exception as exc:
                     failures.append(key)
                     print(f"BACKFILL_FAILED={key}: {type(exc).__name__}", flush=True)
@@ -103,7 +105,7 @@ def main():
                 net = acquired-lost if acquired is not None and lost is not None else ""
                 row = [key, PLATFORM, REGION, followers, "", "", net,
                        "", "", "", "", "", "partial_historical_no_snapshot",
-                       "", "", published if published is not None else "", ""]
+                       "", "", published, ""]
                 row[3], row[6] = followers if followers is not None else "", net
                 existing = find_existing_row(values, key)
                 old = values[existing-1] if existing else []
