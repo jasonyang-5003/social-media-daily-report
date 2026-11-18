@@ -91,6 +91,31 @@ test('Apify start timeouts do not automatically create another paid run',async()
     assert.equal((await env.DB.prepare('SELECT state FROM jobs').first()).state,'failed');
   }finally{globalThis.fetch=realFetch;}
 });
+
+test('X current-month query preserves budget and never fills unqueried dates with zero',async()=>{
+  const {env}=environment();const realFetch=globalThis.fetch;let posted;
+  globalThis.fetch=async(url,init)=>{
+    if(init?.method==='POST'){
+      assert.equal(new URL(url).searchParams.get('maxTotalChargeUsd'),'0.005');
+      posted=JSON.parse(init.body);return Response.json({data:{id:'existing-run'}});
+    }
+    return Response.json([{id:'post',createdAt:'2026-11-16T01:00:00Z',author:{followers:100},viewCount:10}]);
+  };
+  try{
+    env.X_USERNAME='UgPhoneOfficial';
+    await env.DB.prepare('INSERT INTO jobs(id,entity,date,kind,payload,updated_at) VALUES(?,?,?,?,?,?)').bind('x-month','x','2026-11-17','x-start','{}','').run();
+    await call(env,'/internal/job',{id:'x-month'});
+    assert.equal(posted.twitterContent,'from:UgPhoneOfficial since:2026-11-01 until:2026-11-18');
+    const payload=JSON.parse((await env.DB.prepare('SELECT payload FROM jobs').first()).payload);
+    payload.stage='dataset';payload.dataset='saved';payload.collectedAt='2026-11-18T01:40:00Z';
+    await env.DB.prepare("UPDATE jobs SET payload=?,ready_at=0").bind(JSON.stringify(payload)).run();
+    await call(env,'/internal/job',{id:'x-month'});
+    assert.equal((await env.DB.prepare("SELECT COUNT(*) AS n FROM metrics WHERE date<'2026-11-01'").first()).n,0);
+    const current=JSON.parse((await env.DB.prepare("SELECT data FROM metrics WHERE date='2026-11-17'").first()).data);
+    assert.equal(current.monthViews,10);
+    assert.equal(current.collectedAt,'2026-11-18T01:40:00Z');
+  }finally{globalThis.fetch=realFetch;}
+});
 test('Discord historical message fill keeps missing member snapshots empty and deduplicates active users',async()=>{
   const {env}=environment();
   await call(env,'/admin/seed',{entities:[{id:'discord-latam',points:[{date:'2026-10-02',audience:100,collectedAt:'test'}]}]});

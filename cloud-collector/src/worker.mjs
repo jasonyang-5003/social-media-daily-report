@@ -177,10 +177,11 @@ async function ytVideos(env,job,p) {
   await fillPublicationHistory(env,job,videos.map(v=>v.date));
   return true;
 }
-async function fillPublicationHistory(env,job,dates) {
-  const history=await env.DB.prepare('SELECT date,data FROM metrics WHERE entity=? AND date>=? AND date<?').bind(job.entity,shiftDay(job.date,-28),job.date).all();
+async function fillPublicationHistory(env,job,dates,coverageStart=shiftDay(job.date,-28)) {
+  const start=coverageStart>shiftDay(job.date,-28)?coverageStart:shiftDay(job.date,-28);
+  const history=await env.DB.prepare('SELECT date,data FROM metrics WHERE entity=? AND date>=? AND date<?').bind(job.entity,start,job.date).all();
   const known=new Map(history.results.map(r=>[r.date,JSON.parse(r.data)]));const updates=[];
-  for(let date=shiftDay(job.date,-28);date<job.date;date=shiftDay(date,1)) {
+  for(let date=start;date<job.date;date=shiftDay(date,1)) {
     const old=known.get(date),counts=publicationCounts(dates,date),patch={};
     if(old?.publishedCount==null)patch.publishedCount=counts.publishedCount;
     if(old?.monthPublished==null)patch.monthPublished=counts.monthPublished;
@@ -189,11 +190,11 @@ async function fillPublicationHistory(env,job,dates) {
   if(updates.length)await env.DB.batch(updates);
 }
 async function xStart(env,job) {
-  const start=shiftDay(job.date,-28).slice(0,7)+'-01';
+  const start=job.date.slice(0,7)+'-01';
   const cap=Math.min(Number(env.APIFY_MAX_CHARGE_USD||0.005),0.005);
   const data=await request(`https://api.apify.com/v2/acts/kaitoeasyapi~twitter-x-data-tweet-scraper-pay-per-result-cheapest/runs?build=latest0225&maxTotalChargeUsd=${cap}`,{method:'POST',headers:{Authorization:`Bearer ${env.APIFY_API_TOKEN}`,'Content-Type':'application/json'},body:JSON.stringify({twitterContent:`from:${env.X_USERNAME} since:${start} until:${shiftDay(job.date,1)}`,queryType:'Latest',maxItems:1000})});
   // Persist run ID before polling; never restart a paid run while waiting.
-  return continueJob(env,job,{stage:'poll',runId:data.data.id,started:Date.now()},60000);
+  return continueJob(env,job,{stage:'poll',runId:data.data.id,started:Date.now(),coverageStart:start},60000);
 }
 async function xPoll(env,job,p) {
   const data=await request(`https://api.apify.com/v2/actor-runs/${p.runId}`,{headers:{Authorization:`Bearer ${env.APIFY_API_TOKEN}`}});
@@ -231,7 +232,7 @@ async function xDataset(env,job,p) {
   const current={audience:Number(author.followers),monthViews:month.reduce((n,x)=>n+Number(x.viewCount||0),0),monthInteractions:month.reduce((n,x)=>n+['likeCount','replyCount','retweetCount','quoteCount'].reduce((sum,k)=>sum+Number(x[k]||0),0),0),...publicationCounts(posts.map(x=>x.date),job.date)};
   const prev=await readPoint(env,job.entity,shiftDay(job.date,-1));
   await savePoint(env,job.entity,job.date,{...current,...deltas(prev,current,job.date),status:'success',collectedAt:p.collectedAt||now()});
-  await fillPublicationHistory(env,job,posts.map(x=>x.date));return true;
+  await fillPublicationHistory(env,job,posts.map(x=>x.date),p.coverageStart);return true;
 }
 async function processJob(env,id) {
   const claimed=await env.DB.prepare("UPDATE jobs SET state='running',lease_until=?,updated_at=? WHERE id=? AND ready_at<=? AND (state='pending' OR (state='running' AND lease_until<?)) RETURNING *").bind(Date.now()+90000,now(),id,Date.now(),Date.now()).first();
