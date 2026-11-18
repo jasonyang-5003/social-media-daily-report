@@ -33,11 +33,14 @@ def literal(value):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--retry-zero-cost-today", action="store_true")
+    parser.add_argument("--start", help="Process saved jobs on or after YYYY-MM-DD")
     args = parser.parse_args()
     state = json.loads((BASE / "local-state.json").read_text(encoding="utf-8"))
     env = load_env(ROOT / "social-report/.env")
     headers = {"Authorization": "Bearer " + env["APIFY_API_TOKEN"]}
-    jobs = query("SELECT * FROM jobs WHERE entity='x' AND state='failed' ORDER BY date")
+    start = datetime.fromisoformat(args.start).date().isoformat() if args.start else None
+    jobs = query("SELECT * FROM jobs WHERE entity='x' AND state='failed'" +
+                 (" AND date>=" + literal(start) if start else "") + " ORDER BY date")
     backup = ROOT / "social-report/logs" / ("x-recovery-" + datetime.now().strftime("%Y%m%d-%H%M%S") + ".json")
     backup.write_text(json.dumps({"jobs": jobs, "metrics": query("SELECT * FROM metrics WHERE entity='x'")}), encoding="utf-8")
     today = (datetime.now(timezone(timedelta(hours=8))).date() - timedelta(days=1)).isoformat()
@@ -56,11 +59,15 @@ def main():
             print(f"SKIP={job['date']} saved_run_unavailable HTTP={response.status_code}", flush=True)
             continue
         run = response.json()["data"]
-        retry = args.retry_zero_cost_today and job["date"] == today and run["status"] == "FAILED" and float(run.get("usageTotalUsd") or 0) == 0
+        retry_marker = ROOT / "social-report/logs" / ("x-manual-retry-" + job["date"] + ".json")
+        retry = args.retry_zero_cost_today and job["date"] == today and run["status"] == "FAILED" and float(run.get("usageTotalUsd") or 0) == 0 and not retry_marker.exists()
         if run["status"] != "SUCCEEDED" and not retry:
             print(f"SKIP={job['date']} status={run['status']}", flush=True)
             continue
         if retry:
+            # Record before dispatch; never create duplicate paid work on a
+            # network timeout or a repeated invocation of this repair utility.
+            retry_marker.write_text(json.dumps({"previousRun": run_id, "date": job["date"]}), encoding="utf-8")
             new_payload = {}
         else:
             # Re-run only validation/dataset stages; xStart is never called.
