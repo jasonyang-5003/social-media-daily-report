@@ -214,7 +214,7 @@ async function xPoll(env,job,p) {
     const log=await response.text();
     if(!apifyCompletedWithoutCap(log))throw new Error('Apify charge cap reached; completeness not verified');
   }
-  return continueJob(env,job,{...p,stage:'dataset',dataset:run.defaultDatasetId});
+  return continueJob(env,job,{...p,stage:'dataset',dataset:run.defaultDatasetId,collectedAt:run.finishedAt||run.startedAt||now()});
 }
 export function apifyCompletedWithoutCap(log) {
   const summary=String(log).split('\n').filter(line=>line.includes('[RunSummary]')).at(-1)||'';
@@ -230,7 +230,7 @@ async function xDataset(env,job,p) {
   const month=posts.filter(x=>x.date.slice(0,7)===job.date.slice(0,7));
   const current={audience:Number(author.followers),monthViews:month.reduce((n,x)=>n+Number(x.viewCount||0),0),monthInteractions:month.reduce((n,x)=>n+['likeCount','replyCount','retweetCount','quoteCount'].reduce((sum,k)=>sum+Number(x[k]||0),0),0),...publicationCounts(posts.map(x=>x.date),job.date)};
   const prev=await readPoint(env,job.entity,shiftDay(job.date,-1));
-  await savePoint(env,job.entity,job.date,{...current,...deltas(prev,current,job.date),status:'success',collectedAt:now()});
+  await savePoint(env,job.entity,job.date,{...current,...deltas(prev,current,job.date),status:'success',collectedAt:p.collectedAt||now()});
   await fillPublicationHistory(env,job,posts.map(x=>x.date));return true;
 }
 async function processJob(env,id) {
