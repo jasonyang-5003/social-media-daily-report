@@ -11,7 +11,16 @@ function collectionStatus(entity, jobs = [], now = new Date()) {
   const activeJobs = jobs.filter(job => job.entity === entity.id &&
     (!latest || job.date >= latest.date));
   if (activeJobs.some(job => job.state === 'failed')) {
-    return { level: 'warning', text: '采集失败，请检查该账号的授权或接口状态' };
+    const error = activeJobs.find(job => job.state === 'failed').error || '';
+    const explanations = [
+      [/updated terms/, 'Metricool 新版服务条款待运营人员确认'],
+      [/login expired/, 'Metricool 登录已过期，需要重新登录'],
+      [/date picker/, 'Metricool 日期控件操作超时'],
+      [/upstream Twitter/, 'Apify 上游 X 搜索服务暂不可用'],
+      [/charge cap|completeness/, 'X 采集结果完整性未确认，已暂停入库'],
+      [/post metrics unavailable/, 'Metricool 部分内容指标未返回'],
+    ];
+    return { level: 'warning', text: explanations.find(([pattern]) => pattern.test(error))?.[1] || '采集失败，请检查该账号的授权或接口状态' };
   }
   if (activeJobs.some(job => ['pending', 'running'].includes(job.state))) {
     return { level: 'pending', text: '正在采集，最新数据尚未齐全' };

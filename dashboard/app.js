@@ -198,6 +198,7 @@ function render() {
 async function start() {
   const response = await fetch("data/metrics.json", { cache: "no-store" }); if (!response.ok) throw new Error("数据文件尚未导出");
   state.data = await response.json();
+  state.health = state.data.health || [];
   state.data.entities.forEach(entity => { entity.points = entity.points.map(point => normalizePoint(entity, point)); });
   if (window.SOCIAL_CLOUD_URL) {
     try {
@@ -211,7 +212,7 @@ async function start() {
         for (const point of remote.points) points.set(point.date, normalizePoint(entity, {...points.get(point.date), ...point}));
         entity.points = [...points.values()].sort((a,b)=>a.date.localeCompare(b.date));
       }
-      state.health = cloud.health || [];
+      state.health = [...(state.data.health || []), ...(cloud.health || [])];
     } catch (error) {
       const names = state.data.entities.filter(entity => entity.id !== 'facebook').map(entity => entity.label);
       state.connectionWarning = `${names.join("、")}：云端连接失败，当前显示最近保存的数据，暂无法确认本次采集状态。`;

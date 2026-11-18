@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import subprocess
+import json
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from cloud_sync import cloud_settings
 
@@ -42,6 +43,24 @@ def run_collector(base_dir: Path, platform: str, script_name: str) -> bool:
         print(result.stdout.rstrip(), flush=True)
     if result.stderr:
         print(result.stderr.rstrip(), flush=True)
+
+    if platform == "Facebook":
+        detail = (result.stderr or "") + (result.stdout or "")
+        error = (
+            "Metricool updated terms require operator acceptance"
+            if "MetricoolConsentRequired" in detail else
+            "Metricool login expired" if "Metricool login expired" in detail else
+            "Metricool date picker interaction timed out" if "TimeoutError" in detail else
+            "Metricool post metrics unavailable" if "partial_metricool" in detail else
+            "Facebook collection failed"
+        )
+        folder = base_dir / "logs"
+        folder.mkdir(exist_ok=True)
+        (folder / "facebook-health.json").write_text(json.dumps({
+            "entity": "facebook", "state": "done" if result.returncode == 0 else "failed",
+            "date": (datetime.now(timezone(timedelta(hours=8))).date() - timedelta(days=1)).isoformat(),
+            "error": None if result.returncode == 0 else error,
+        }), encoding="utf-8")
 
     if result.returncode == 0:
         print(f"===== {platform} SUCCESS =====", flush=True)

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
 import {readFileSync} from 'node:fs';
-import worker,{dayAt,shiftDay,snowflake,messageDay,deltas,publicationCounts,xCreatedAt} from '../src/worker.mjs';
+import worker,{dayAt,shiftDay,snowflake,messageDay,deltas,publicationCounts,xCreatedAt,apifyCompletedWithoutCap} from '../src/worker.mjs';
 
 function environment() {
   const sqlite=new DatabaseSync(':memory:');sqlite.exec(readFileSync(new URL('../schema.sql',import.meta.url),'utf8'));
@@ -11,6 +11,29 @@ function environment() {
 }
 const context={waitUntil(){}};
 const call=(env,path,body,authorized=true)=>worker.fetch(new Request('https://collector.test'+path,{method:'POST',headers:{'Content-Type':'application/json',...(authorized?{Authorization:'Bearer test-admin'}:{})},body:JSON.stringify(body)}),env,context);
+
+test('only explicit completed uncapped actor summaries prove completeness',()=>{
+  assert.equal(apifyCompletedWithoutCap('[RunSummary] status=SUCCEEDED real=20 capped=0'),true);
+  for(const log of ['', '[RunSummary] status=SUCCEEDED capped=1', '[RunSummary] status=FAILED capped=0', '[RunSummary] status=SUCCEEDED capped=01'])assert.equal(apifyCompletedWithoutCap(log),false);
+});
+
+test('successful run at budget limit is reused only when log confirms completion',async()=>{
+  for(const capped of [0,1]) {
+    const {env}=environment(); const realFetch=globalThis.fetch; const methods=[];
+    globalThis.fetch=async(url,init)=>{
+      methods.push(init?.method||'GET');
+      return String(url).endsWith('/log')?new Response(`[RunSummary] status=SUCCEEDED capped=${capped}`):Response.json({data:{status:'SUCCEEDED',usageTotalUsd:0.005,defaultDatasetId:'saved'}});
+    };
+    try {
+      await env.DB.prepare('INSERT INTO jobs(id,entity,date,kind,payload,updated_at) VALUES(?,?,?,?,?,?)').bind('x-saved','x','2026-11-16','x-start',JSON.stringify({stage:'poll',runId:'existing'}),'').run();
+      await call(env,'/internal/job',{id:'x-saved'});
+      const job=await env.DB.prepare('SELECT payload,error FROM jobs').first();
+      assert.equal(JSON.parse(job.payload).stage,capped?'poll':'dataset');
+      if(capped)assert.match(job.error,/completeness not verified/);
+      assert.deepEqual(methods,['GET','GET']);
+    }finally{globalThis.fetch=realFetch;}
+  }
+});
 test('Beijing midnight and snowflake calendar boundaries',()=>{
   assert.equal(dayAt('2026-10-01T16:00:00Z'),'2026-10-02');
   assert.equal(messageDay(snowflake(Date.parse('2026-10-01T16:00:00Z'))),'2026-10-02');

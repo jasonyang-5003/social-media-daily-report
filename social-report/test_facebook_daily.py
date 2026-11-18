@@ -1,8 +1,9 @@
 import unittest
+from unittest.mock import MagicMock
 from datetime import date
 from facebook_backfill import missing_dates, merge_missing
 
-from facebook_daily import parse_number, previous_month_totals, find_existing_row
+from facebook_daily import parse_number, previous_month_totals, find_existing_row, wait_metricool_ready, MetricoolConsentRequired
 
 
 def row(date, views="100", interactions="10", region="LATAM"):
@@ -10,6 +11,20 @@ def row(date, views="100", interactions="10", region="LATAM"):
 
 
 class FacebookMetricsTests(unittest.TestCase):
+    def test_terms_blocker_is_identified_without_accepting(self):
+        page = MagicMock()
+        page.url = 'https://app.metricool.com/evolution/facebookPage'
+        page.get_by_text.return_value.is_visible.return_value = True
+        with self.assertRaises(MetricoolConsentRequired):
+            wait_metricool_ready(page)
+        page.locator.assert_not_called()
+
+    def test_expired_login_is_identified(self):
+        page = MagicMock()
+        page.url = 'https://app.metricool.com/login'
+        with self.assertRaisesRegex(RuntimeError, 'login expired'):
+            wait_metricool_ready(page)
+
     def test_backfill_targets_missing_fields_not_snapshot_fields(self):
         complete = ["2026-10-07", "Facebook", "LATAM", "8000", "", "", "0"] + [""] * 8 + ["0", ""]
         partial = complete.copy()

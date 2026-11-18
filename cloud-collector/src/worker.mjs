@@ -202,9 +202,23 @@ async function xPoll(env,job,p) {
     if(Date.now()-p.started>30*60000)throw new Error('Apify run timed out; inspect existing run before restarting');
     return continueJob(env,job,p,60000);
   }
-  if(run.status!=='SUCCEEDED')throw new Error('Apify run failed');
-  if(Number(run.usageTotalUsd||0)>=Math.min(Number(env.APIFY_MAX_CHARGE_USD||0.005),0.005)*0.98)throw new Error('Apify charge cap reached; incomplete data');
+  if(run.status!=='SUCCEEDED')throw new Error(
+    /upstream.*(unavailable|outage)/i.test(run.statusMessage||'')
+      ? 'Apify upstream Twitter search temporarily unavailable'
+      : 'Apify run failed');
+  if(Number(run.usageTotalUsd||0)>=Math.min(Number(env.APIFY_MAX_CHARGE_USD||0.005),0.005)*0.98) {
+    // A fully completed pay-per-result run may cost exactly the configured cap.
+    // Only accept it if this actor explicitly confirms no truncation.
+    const response=await fetch(`https://api.apify.com/v2/actor-runs/${p.runId}/log`,{headers:{Authorization:`Bearer ${env.APIFY_API_TOKEN}`},signal:AbortSignal.timeout(20000)});
+    if(!response.ok)throw new Error('Apify completion log unavailable; completeness not verified');
+    const log=await response.text();
+    if(!apifyCompletedWithoutCap(log))throw new Error('Apify charge cap reached; completeness not verified');
+  }
   return continueJob(env,job,{...p,stage:'dataset',dataset:run.defaultDatasetId});
+}
+export function apifyCompletedWithoutCap(log) {
+  const summary=String(log).split('\n').filter(line=>line.includes('[RunSummary]')).at(-1)||'';
+  return /\bstatus=SUCCEEDED\b/.test(summary) && /\bcapped=0\b/.test(summary);
 }
 async function xDataset(env,job,p) {
   const raw=await request(`https://api.apify.com/v2/datasets/${p.dataset}/items?clean=true&format=json`,{headers:{Authorization:`Bearer ${env.APIFY_API_TOKEN}`}});

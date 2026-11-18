@@ -97,23 +97,47 @@ def metric_occurrence(
     return values[occurrence]
 
 
+class MetricoolConsentRequired(RuntimeError):
+    pass
+
+
+def wait_metricool_ready(page: Page) -> None:
+    """Wait for the app, and identify consent/auth blockers before clicking."""
+    page.wait_for_function("""() => location.pathname.includes('/login') ||
+      document.querySelector('[aria-label="Evolution date range picker"]') ||
+      document.body.innerText.includes('Metricool terms and conditions update')""",
+      timeout=60_000)
+    if "/login" in page.url:
+        raise RuntimeError("Metricool login expired; run: py -3.12 facebook_login.py")
+    if page.get_by_text("Metricool terms and conditions update", exact=True).is_visible():
+        raise MetricoolConsentRequired(
+            "Metricool requires the account operator to accept updated terms; "
+            "run: py -3.12 facebook_login.py"
+        )
+    page.locator('[aria-label="Evolution date range picker"]').locator("button").first.wait_for(
+        state="visible", timeout=60_000)
+
+
+def open_date_picker(page: Page) -> None:
+    wait_metricool_ready(page)
+    page.locator('[aria-label="Evolution date range picker"]').locator("button").first.click()
+
+
 def choose_yesterday(page: Page) -> None:
-    picker = page.locator('[aria-label="Evolution date range picker"]')
-    picker.locator("button").first.click()
+    open_date_picker(page)
     page.get_by_role("button", name="Yesterday", exact=True).click()
     page.wait_for_timeout(8_000)
 
 
 def choose_current_month(page: Page) -> None:
-    picker = page.locator('[aria-label="Evolution date range picker"]')
-    picker.locator("button").first.click()
+    open_date_picker(page)
     page.get_by_role("button", name="Current month", exact=True).click()
     page.wait_for_timeout(8_000)
 
 
 def choose_day(page: Page, report_date: str) -> None:
     picker = page.locator('[aria-label="Evolution date range picker"]')
-    picker.locator("button").first.click()
+    open_date_picker(page)
     selector = f".vc-day.in-month.id-{report_date} .vc-day-content:visible"
     day = page.locator(selector).first
     if day.count() == 0:
@@ -168,11 +192,7 @@ def collect_metricool(
         try:
             page = context.pages[0] if context.pages else context.new_page()
             page.goto(METRICOOL_URL, wait_until="domcontentloaded", timeout=60_000)
-            page.wait_for_timeout(2_000)
-            if "/login" in page.url:
-                raise RuntimeError(
-                    "Metricool login expired; run: py -3.12 facebook_login.py"
-                )
+            wait_metricool_ready(page)
 
             if report_date:
                 choose_day(page, report_date)

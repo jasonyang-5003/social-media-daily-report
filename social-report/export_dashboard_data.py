@@ -105,6 +105,10 @@ def main() -> None:
         "generatedAt": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "timezone": "Asia/Shanghai",
         "entities": entities,
+        "health": (
+            [json.loads((base_dir / "logs/facebook-health.json").read_text(encoding="utf-8"))]
+            if (base_dir / "logs/facebook-health.json").exists() else []
+        ),
     }
     output_dir = root_dir / "dashboard" / "data"
     output_dir.mkdir(parents=True, exist_ok=True)
