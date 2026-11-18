@@ -36,3 +36,9 @@ test('no points and unknown status are not healthy', () => {
   assert.equal(collectionStatus(entity([]), [], now).level, 'warning');
   assert.equal(collectionStatus(entity([{ ...point, status: 'failed' }]), [], now).level, 'warning');
 });
+
+test('source-specific failures explain required action instead of generic errors', () => {
+  const result=collectionStatus(entity(),[{entity:'facebook',date:point.date,state:'failed',error:'Metricool updated terms require operator acceptance'}],now);
+  assert.match(result.text,/服务条款/);
+  assert.doesNotMatch(result.text,/封号/);
+});

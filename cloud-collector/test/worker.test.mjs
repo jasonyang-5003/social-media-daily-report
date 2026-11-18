@@ -22,13 +22,14 @@ test('successful run at budget limit is reused only when log confirms completion
     const {env}=environment(); const realFetch=globalThis.fetch; const methods=[];
     globalThis.fetch=async(url,init)=>{
       methods.push(init?.method||'GET');
-      return String(url).endsWith('/log')?new Response(`[RunSummary] status=SUCCEEDED capped=${capped}`):Response.json({data:{status:'SUCCEEDED',usageTotalUsd:0.005,defaultDatasetId:'saved'}});
+      return String(url).endsWith('/log')?new Response(`[RunSummary] status=SUCCEEDED capped=${capped}`):Response.json({data:{status:'SUCCEEDED',usageTotalUsd:0.005,defaultDatasetId:'saved',finishedAt:'2026-11-17T01:40:00Z'}});
     };
     try {
       await env.DB.prepare('INSERT INTO jobs(id,entity,date,kind,payload,updated_at) VALUES(?,?,?,?,?,?)').bind('x-saved','x','2026-11-16','x-start',JSON.stringify({stage:'poll',runId:'existing'}),'').run();
       await call(env,'/internal/job',{id:'x-saved'});
       const job=await env.DB.prepare('SELECT payload,error FROM jobs').first();
       assert.equal(JSON.parse(job.payload).stage,capped?'poll':'dataset');
+      if(!capped)assert.equal(JSON.parse(job.payload).collectedAt,'2026-11-17T01:40:00Z');
       if(capped)assert.match(job.error,/completeness not verified/);
       assert.deepEqual(methods,['GET','GET']);
     }finally{globalThis.fetch=realFetch;}
